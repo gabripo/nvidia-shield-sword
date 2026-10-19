@@ -32,13 +32,15 @@ from your phone through a **Telegram bot**. A small **macOS helper** (`shield` c
 | `shield/termux/` | `start-claude.sh` (starts sshd + Debian + Claude) and the `~/.bashrc` autostart hook |
 | `shield/debian/trips/` | Workspace for Claude: `CLAUDE.md` rules + pre-allowed tools |
 | `mac/` | `shield` command, `Shield.app` source (AppleScript + SVG icon), build and install scripts |
+| `linux/` | Linux version of the helper: `shield`, a zenity/kdialog menu and a desktop launcher ([docs/LINUX.md](docs/LINUX.md)) |
 | `config.example` | Settings (Shield IP, SSH key, time zone) |
 | `docs/` | Guides |
 
 ## Quick start
 
 1. Prepare the Shield and the Mac: **[docs/SETUP.md](docs/SETUP.md)** (ADB, SSH key, config).
-2. `mac/install.sh` (installs the `shield` command, config and Shield.app).
+2. `mac/install.sh` (installs the `shield` command, config and Shield.app). On Linux:
+   `linux/install.sh`, see [docs/LINUX.md](docs/LINUX.md).
 3. `setup/install.sh` (sets up everything on the Shield, about 15–30 minutes).
 4. Sign in to Claude and connect Telegram: **[docs/TELEGRAM.md](docs/TELEGRAM.md)**.
 5. Day-to-day use: **[docs/USAGE.md](docs/USAGE.md)**. Problems: **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**.

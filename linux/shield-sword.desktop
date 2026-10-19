@@ -1,0 +1,27 @@
+[Desktop Entry]
+Type=Application
+Name=Shield
+GenericName=NVIDIA Shield SSH helper
+Comment=Open Claude Code, Debian or Termux on the NVIDIA Shield
+Exec=shield-menu
+Icon=shield-sword
+Terminal=false
+Categories=Network;RemoteAccess;Utility;
+Keywords=nvidia;shield;ssh;claude;telegram;termux;
+Actions=claude;status;start;stop;
+
+[Desktop Action claude]
+Name=Claude Code session
+Exec=shield-menu claude
+
+[Desktop Action status]
+Name=Status
+Exec=shield-menu status
+
+[Desktop Action start]
+Name=Start Claude
+Exec=shield-menu start
+
+[Desktop Action stop]
+Name=Stop Claude
+Exec=shield-menu stop

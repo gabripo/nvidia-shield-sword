@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# shield-menu - graphical launcher for the `shield` command (Linux version of Shield.app).
+# Shows a menu (zenity on GNOME/most desktops, kdialog on KDE, whiptail/dialog in a
+# terminal as a fallback) and runs the choice in a new terminal window.
+set -u
+
+SHIELD="${SHIELD_CMD:-$(command -v shield || echo "$HOME/.local/bin/shield")}"
+TITLE="NVIDIA Shield"
+
+LABELS=("Claude Code session (Telegram bot)" "Debian shell" "Termux shell" "Status" "Start Claude" "Stop Claude")
+CMDS=(claude debian termux status start stop)
+
+notify_error() {
+  if command -v zenity >/dev/null; then zenity --error --title "$TITLE" --text "$1"
+  elif command -v kdialog >/dev/null; then kdialog --title "$TITLE" --error "$1"
+  else echo "$1" >&2; fi
+}
+
+# --- pick an action -----------------------------------------------------------
+choice=""
+if [[ -n "${1:-}" ]]; then
+  choice="$1"                                   # e.g. `shield-menu status` from a desktop action
+elif command -v zenity >/dev/null; then
+  pick=$(zenity --list --title "$TITLE" --text "Open on the Shield:" --column "Action" \
+         --width 380 --height 330 --ok-label "Open" "${LABELS[@]}") || exit 0
+elif command -v kdialog >/dev/null; then
+  args=(); for i in "${!LABELS[@]}"; do args+=("$i" "${LABELS[$i]}"); done
+  idx=$(kdialog --title "$TITLE" --menu "Open on the Shield:" "${args[@]}") || exit 0
+  pick="${LABELS[$idx]}"
+elif [[ -t 0 ]] && { command -v whiptail || command -v dialog; } >/dev/null; then
+  tool=$(command -v whiptail || command -v dialog)
+  args=(); for i in "${!LABELS[@]}"; do args+=("$i" "${LABELS[$i]}"); done
+  idx=$("$tool" --title "$TITLE" --menu "Open on the Shield:" 15 50 6 "${args[@]}" 3>&1 1>&2 2>&3) || exit 0
+  pick="${LABELS[$idx]}"
+else
+  notify_error "Install zenity (GNOME, Xfce, ...) or kdialog (KDE) to use the menu, or run 'shield' in a terminal."
+  exit 1
+fi
+
+if [[ -z "$choice" ]]; then
+  for i in "${!LABELS[@]}"; do [[ "${LABELS[$i]}" == "$pick" ]] && choice="${CMDS[$i]}"; done
+fi
+[[ -n "$choice" ]] || exit 0
+
+if [[ "$choice" == stop ]]; then
+  msg="Stop the Claude session on the Shield? The Telegram bot goes offline until you start it again."
+  if command -v zenity >/dev/null; then zenity --question --title "$TITLE" --text "$msg" --ok-label "Stop" || exit 0
+  elif command -v kdialog >/dev/null; then kdialog --title "$TITLE" --warningcontinuecancel "$msg" || exit 0
+  fi
+fi
+
+# --- run it in a terminal window ---------------------------------------------
+# Keep the window open after commands that finish (status/start/stop).
+inner="\"$SHIELD\" $choice"
+case "$choice" in status|start|stop) inner="$inner; echo; read -rp 'Press Enter to close...' _" ;; esac
+
+run_in_terminal() {
+  local t
+  for t in ${TERMINAL:-} x-terminal-emulator gnome-terminal konsole xfce4-terminal kitty alacritty wezterm foot tilix xterm; do
+    command -v "$t" >/dev/null || continue
+    case "$t" in
+      gnome-terminal|tilix) exec "$t" --title "$TITLE" -- bash -c "$inner" ;;
+      konsole)              exec konsole -p tabtitle="$TITLE" -e bash -c "$inner" ;;
+      xfce4-terminal)       exec xfce4-terminal --title "$TITLE" -x bash -c "$inner" ;;
+      wezterm)              exec wezterm start -- bash -c "$inner" ;;
+      kitty|alacritty|foot|xterm|x-terminal-emulator|*) exec "$t" -e bash -c "$inner" ;;
+    esac
+  done
+  return 1
+}
+
+if [[ -t 0 && -t 1 ]]; then
+  exec bash -c "$inner"            # already in a terminal: run here
+fi
+run_in_terminal || notify_error "No terminal emulator found. Set TERMINAL=<your terminal> or run 'shield $choice' in a terminal."

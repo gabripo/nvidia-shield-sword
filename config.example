@@ -15,5 +15,8 @@ SHIELD_SSH_PORT="8022"
 # SSH private key used to log in to Termux. Its .pub file is installed on the Shield.
 SHIELD_SSH_KEY="$HOME/.ssh/id_ed25519"
 
+# Optional extra ssh options (Linux helper), e.g. "-o AddKeysToAgent=yes".
+# SHIELD_SSH_EXTRA=""
+
 # Time zone for Debian (should match the Shield's; adb shell getprop persist.sys.timezone).
 SHIELD_TIMEZONE="Europe/Zurich"
