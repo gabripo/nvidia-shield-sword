@@ -102,7 +102,8 @@ if want files; then
   remote 'f=~/.bashrc; touch $f; sed -i "/>>> nvidia-shield-sword autostart >>>/,/<<< nvidia-shield-sword autostart <<</d" $f; cat >> $f; chmod 600 $f' \
     < "$REPO/shield/termux/bashrc-autostart.sh"
   # Copy ~/trips (CLAUDE.md + .claude/settings.json) into Debian without overwriting your own edits.
-  COPYFILE_DISABLE=1 tar -C "$REPO/shield/debian" -cf - trips | remote 'proot-distro login debian -- tar -C /root --skip-old-files -xf -'
+  # --no-xattrs/--no-mac-metadata: GNU tar on the Shield warns about macOS extended attributes.
+  COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -C "$REPO/shield/debian" -cf - trips | remote 'proot-distro login debian -- tar -C /root --skip-old-files -xf -'
 fi
 
 step "Done"
