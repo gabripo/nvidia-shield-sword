@@ -141,6 +141,9 @@ df -h / | awk 'NR==2 {print $4 " disk free"}'
 - Commands run as root with cwd `/root/workspace` and are stopped after 120 s.
 - Keep secrets in `/root/workspace/.secrets/` (mode 600), never in the command file.
 
+A ready-made `/plug` for Shelly smart plugs is in [`examples/commands/plug`](../examples/commands/plug)
+(see [examples/README.md](../examples/README.md)).
+
 Examples you can ask Claude for: *"create /plug that switches my Shelly plug at 192.168.1.50 on
 or off"*, *"create /ar4k that runs a command on my gaming PC over SSH"* (Claude creates a key
 and tells you where to authorize it), *"create /backup that copies ~/workspace to my NAS"*.

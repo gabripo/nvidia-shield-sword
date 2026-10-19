@@ -1,8 +1,7 @@
 # Examples
 
-Extra rules for Claude's workspace on the Shield (`/root/workspace` in Debian). The workspace
-already has a `CLAUDE.md` (general assistant rules + how to create bot commands); an example adds
-a section to it.
+Ready-made bot commands and extra rules for Claude's workspace on the Shield
+(`/root/workspace` in Debian).
 
 ## trips
 
@@ -22,3 +21,27 @@ ssh -p "$SHIELD_SSH_PORT" -i "$SHIELD_SSH_KEY" "$SHIELD_HOST" \
 
 Claude reads `CLAUDE.md` on every request, so it applies to the next Telegram message.
 Send `/new` first if the current conversation should forget earlier context.
+
+## commands/plug: Shelly smart plug
+
+`/plug [on|off|toggle|status]` switches a Shelly plug on your Wi-Fi and reports its state, power,
+voltage, temperature and energy, e.g. `Plug is ON · 42.0 W · 235 V · 38 °C · 1.24 kWh total`.
+Works with Shelly's Gen2/Gen3/Gen4 RPC API (tested with a Shelly Plug S Gen3); talks to the plug
+directly on your LAN, no Shelly cloud.
+
+1. Find the plug's IP (Shelly app → device → settings → device information, or your router) and
+   give it a fixed IP in the router.
+2. Install it (from your Mac, in the repository folder; replace the IP):
+
+   ```bash
+   source ~/.config/shield/config
+   S() { ssh -p "$SHIELD_SSH_PORT" -i "$SHIELD_SSH_KEY" "$SHIELD_HOST" "$@"; }
+   S 'proot-distro login debian -- bash -c "cat > /root/workspace/commands/plug && chmod 755 /root/workspace/commands/plug"' < examples/commands/plug
+   S 'proot-distro login debian -- bash -c "mkdir -p -m 700 /root/workspace/.secrets && umask 077 && echo SHELLY_HOST=192.168.1.50 > /root/workspace/.secrets/plug.env"'
+   ```
+
+3. Send `/plug` to the bot. If you set a password on the plug, add `SHELLY_PASS=<password>` to
+   `plug.env` (never in the command file).
+
+Or just ask the bot: *"create a command /plug that switches my Shelly plug at 192.168.1.50"*;
+Claude can write the same thing.

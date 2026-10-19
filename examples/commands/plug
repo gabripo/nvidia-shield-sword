@@ -1,0 +1,47 @@
+#!/bin/bash
+# description: Shelly smart plug - /plug [on|off|toggle|status]
+#
+# Bot command for a Shelly plug (Gen2/Gen3/Gen4 RPC API, e.g. Shelly Plug S Gen3).
+# Install: copy to /root/workspace/commands/plug (chmod +x) and create
+# /root/workspace/.secrets/plug.env (chmod 600) with:
+#   SHELLY_HOST=192.168.1.50        # the plug's IP (give it a fixed one in your router)
+#   SHELLY_PASS=                    # only if you enabled a password in the Shelly app
+set -euo pipefail
+
+ENV_FILE=/root/workspace/.secrets/plug.env
+[ -f "$ENV_FILE" ] || { echo "Missing $ENV_FILE (SHELLY_HOST=<ip>)"; exit 1; }
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+: "${SHELLY_HOST:?SHELLY_HOST is not set in $ENV_FILE}"
+
+rpc() {  # rpc <method> [query]
+  local auth=()
+  [ -n "${SHELLY_PASS:-}" ] && auth=(--digest -u "admin:$SHELLY_PASS")
+  curl -sf -m 8 "${auth[@]}" "http://$SHELLY_HOST/rpc/$1${2:+?$2}" \
+    || { echo "Can't reach the plug at $SHELLY_HOST (offline, wrong IP, or password needed)"; exit 1; }
+}
+
+action="${1:-status}"
+case "$action" in
+  on)     rpc Switch.Set "id=0&on=true" >/dev/null ;;
+  off)    rpc Switch.Set "id=0&on=false" >/dev/null ;;
+  toggle) rpc Switch.Toggle "id=0" >/dev/null ;;
+  status) ;;
+  *) echo "Usage: /plug [on|off|toggle|status]"; exit 2 ;;
+esac
+[ "$action" = status ] || sleep 1   # let the power reading settle after switching
+
+rpc Switch.GetStatus "id=0" | python3 -c '
+import json, sys
+s = json.load(sys.stdin)
+state = "ON" if s.get("output") else "OFF"
+parts = [f"Plug is {state}"]
+power, volts = s.get("apower"), s.get("voltage")
+temp = (s.get("temperature") or {}).get("tC")
+energy = (s.get("aenergy") or {}).get("total")      # Wh
+if power is not None:  parts.append(f"{power:.1f} W")
+if volts is not None:  parts.append(f"{volts:.0f} V")
+if temp is not None:   parts.append(f"{temp:.0f} °C")
+if energy is not None: parts.append(f"{energy / 1000:.2f} kWh total")
+print(" · ".join(parts))
+'
