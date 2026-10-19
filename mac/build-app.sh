@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Build mac/build/Shield.app from Shield.applescript and icon/shield-icon.svg.
-# Uses only tools that ship with macOS (osacompile, qlmanage, sips, iconutil, codesign).
+# Uses macOS tools (osacompile, sips, iconutil, codesign) plus `swift` from the
+# Xcode Command Line Tools for a transparent icon.
 set -euo pipefail
 HERE="${0:A:h}"
 OUT="$HERE/build"
@@ -10,9 +11,16 @@ echo "==> Compiling Shield.app"
 osacompile -o "$OUT/Shield.app" "$HERE/Shield.applescript"
 
 echo "==> Rendering icon"
-# Quick Look renders SVG gradients/filters correctly (ImageMagick's built-in renderer does not).
-qlmanage -t -s 1024 -o "$OUT" "$HERE/icon/shield-icon.svg" >/dev/null 2>&1
-mv "$OUT/shield-icon.svg.png" "$OUT/icon-1024.png"
+# AppKit renders the SVG (gradients, blur) onto a transparent canvas. Needs `swift`
+# (Xcode Command Line Tools). Quick Look is the fallback, but its thumbnails have a
+# white background instead of transparency.
+if command -v swift >/dev/null && swift "$HERE/icon/render-icon.swift" "$HERE/icon/shield-icon.svg" "$OUT/icon-1024.png" 1024; then
+  :
+else
+  echo "   swift unavailable - using Quick Look (icon corners will be white; xcode-select --install fixes this)"
+  qlmanage -t -s 1024 -o "$OUT" "$HERE/icon/shield-icon.svg" >/dev/null 2>&1
+  mv "$OUT/shield-icon.svg.png" "$OUT/icon-1024.png"
+fi
 mkdir "$OUT/Shield.iconset"
 for s in 16 32 128 256 512; do
   sips -z $s $s "$OUT/icon-1024.png" --out "$OUT/Shield.iconset/icon_${s}x${s}.png" >/dev/null
