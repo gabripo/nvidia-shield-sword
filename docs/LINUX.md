@@ -7,7 +7,7 @@ The Linux version of the Mac helper: the same `shield` command plus a desktop la
 |---|---|
 | `linux/shield` | The `shield` command (bash), same subcommands as on macOS |
 | `linux/shield-menu` | Graphical menu: zenity (GNOME, Xfce, Cinnamon, …), kdialog (KDE), or whiptail/dialog in a terminal |
-| `linux/shield-sword.desktop` | Launcher with right-click actions (Claude session, Status, Start, Stop) |
+| `linux/shield-sword.desktop` | Launcher with right-click actions (Claude session, Status, Start services, Close Claude session) |
 | `linux/install.sh` | Installs everything into your home folder, no sudo |
 
 ## Install
@@ -51,10 +51,10 @@ Extra ssh options can go in the config, e.g. `SHIELD_SSH_EXTRA="-o AddKeysToAgen
 - **Menu:** open "Shield" from your applications menu, pick an action, **Open**. It runs in a new
   terminal window (`$TERMINAL` if set, otherwise the first of `x-terminal-emulator`,
   `gnome-terminal`, `konsole`, `xfce4-terminal`, `kitty`, `alacritty`, `wezterm`, `foot`, `tilix`,
-  `xterm`). Status/Start/Stop keep the window open until you press Enter.
+  `xterm`). Status, Start services and Close Claude session keep the window open until you press Enter.
 - **Right-click** the launcher (dock or app grid) for the quick actions.
 - **Terminal:** `shield`, `shield debian`, `shield termux`, `shield status`, `shield start`,
-  `shield stop`, exactly as described in [USAGE.md](USAGE.md).
+  `shield stop`, `shield bot-setup`, exactly as described in [USAGE.md](USAGE.md).
 
 ## Setting up the Shield from Linux
 

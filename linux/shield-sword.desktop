@@ -19,9 +19,9 @@ Name=Status
 Exec=shield-menu status
 
 [Desktop Action start]
-Name=Start Claude
+Name=Start services
 Exec=shield-menu start
 
 [Desktop Action stop]
-Name=Stop Claude
+Name=Close Claude session
 Exec=shield-menu stop

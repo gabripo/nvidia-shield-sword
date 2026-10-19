@@ -7,7 +7,7 @@ set -u
 SHIELD="${SHIELD_CMD:-$(command -v shield || echo "$HOME/.local/bin/shield")}"
 TITLE="NVIDIA Shield"
 
-LABELS=("Claude Code session (Telegram bot)" "Debian shell" "Termux shell" "Status" "Start Claude" "Stop Claude")
+LABELS=("Claude Code session" "Debian shell" "Termux shell" "Status" "Start services (sshd + Telegram bot)" "Close Claude session")
 CMDS=(claude debian termux status start stop)
 
 notify_error() {
@@ -43,8 +43,8 @@ fi
 [[ -n "$choice" ]] || exit 0
 
 if [[ "$choice" == stop ]]; then
-  msg="Stop the Claude session on the Shield? The Telegram bot goes offline until you start it again."
-  if command -v zenity >/dev/null; then zenity --question --title "$TITLE" --text "$msg" --ok-label "Stop" || exit 0
+  msg="Close the interactive Claude session on the Shield? The Telegram bot keeps running."
+  if command -v zenity >/dev/null; then zenity --question --title "$TITLE" --text "$msg" --ok-label "Close" || exit 0
   elif command -v kdialog >/dev/null; then kdialog --title "$TITLE" --warningcontinuecancel "$msg" || exit 0
   fi
 fi

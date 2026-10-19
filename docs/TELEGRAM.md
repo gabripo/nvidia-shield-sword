@@ -1,102 +1,123 @@
-# Telegram bot
+# The Telegram bot
 
-Claude Code's **channels** feature (research preview) pushes your Telegram messages into the
-running Claude session on the Shield and sends Claude's replies back to the chat. It uses the
-official plugin `telegram@claude-plugins-official` and needs [Bun](https://bun.sh), which the
-installer sets up.
+One Telegram bot manages the Shield. A small program, `shield-bot` (Python, standard library
+only), runs in Termux, reads every message from you and decides what to do with it:
 
-Docs: <https://code.claude.com/docs/en/channels> ·
-plugin source: <https://github.com/anthropics/claude-plugins-official/tree/main/external_plugins/telegram>
+| You send | What happens | Claude usage |
+|---|---|---|
+| a **built-in command** (`/status`, `/sh …`) | answered directly by shield-bot | none |
+| one of **your commands** (`/tvinfo`, `/plug on`, …) | runs the matching script in Debian's `~/workspace/commands/` | none |
+| **anything else** (plain text, unknown `/commands`) | handed to Claude Code (`claude -p` in `~/workspace`), reply sent back | yes |
+
+Claude can **extend the bot**: ask *"create a command /ar4k that connects via SSH to the gaming
+PC"* and Claude writes `commands/ar4k`, tests it and tells you; from then on `/ar4k` runs
+directly, without Claude.
 
 ## 1. Create the bot
 
 In Telegram, open **@BotFather**, send `/newbot`, choose a display name and a username ending in
-`bot`. BotFather replies with a **token** like `123456789:AA...`. Keep it secret: anyone with it
-controls the bot. (`/revoke` in BotFather issues a new one.)
+`bot`. BotFather replies with a **token** (`123456789:AA…`). Keep it secret: anyone with it
+controls the bot (`/revoke` in BotFather issues a new one).
 
-## 2. Save the token on the Shield
+Get your numeric Telegram user ID from **@userinfobot**.
+
+## 2. Configure shield-bot
+
+On your Mac:
 
 ```bash
-shield            # attaches to the Claude session (starts it if needed)
+shield bot-setup
 ```
 
-In Claude Code:
+It asks for the token (hidden input; checked with Telegram), the allowed user ID(s), and whether
+to allow `/sh` and `/termux`. The config is saved in Termux at
+`~/.config/shield-bot/config.json` (mode 600), and the bot (re)starts.
 
-```
-/telegram:configure <your-bot-token>
-/exit
-```
+From then on the bot starts whenever Termux starts (see [USAGE.md](USAGE.md)) and is restarted
+10 s after any crash. Open your bot in Telegram and send `/help`.
 
-The token is stored in Debian at `~/.claude/channels/telegram/.env`. After `/exit` the
-session's loop restarts Claude in about 15 s, now with the Telegram channel connected.
-The startup screen shows "Channels (experimental) messages from plugin:telegram@… inject
-directly in this session".
+## Built-in commands
 
-## 3. Pair your account
-
-1. On your phone, send any message (e.g. "hi") to your bot. It replies with a **pairing code**.
-2. In the Claude terminal:
-
-   ```
-   /telegram:access pair <code>
-   /telegram:access policy allowlist
-   ```
-
-With the `allowlist` policy, messages from anyone else are silently dropped.
-
-## 4. First message (stay at the terminal)
-
-Send something from Telegram, e.g. *"What's the date and how much disk space is free?"*.
-The first time Claude replies through Telegram, the terminal asks permission for the plugin's
-reply tool: choose **"Yes, and don't ask again"** so later replies don't wait for you.
-
-Then leave the session running: **Ctrl+b**, then **d** (tmux detach).
-
-## How steering works
-
-You write plain language; Claude works in `~/workspace` inside Debian and answers in the chat.
-The examples below assume the trip-planning rules from [`examples/trips`](../examples/trips).
-It can send files back (e.g. `options.md`) as Telegram documents.
-
-| You send | Claude |
+| Command | What it does |
 |---|---|
-| "Plan 3 days in Florence from Zurich, 7–9 Nov, 2 people, train preferred" | researches, proposes 2–3 options with sources, saves them in the workspace |
-| "Option 2 — send me the summary file" | sends booking links + checklist and the file |
-| "Check prices again for option 2" | re-checks and says when |
+| `/help` | All commands, including yours |
+| `/status` | sshd, Claude, uptime, memory, disk, your commands |
+| `/sh <cmd>` | Run a command in Debian as root, e.g. `/sh apt update && apt list --upgradable` |
+| `/termux <cmd>` | Run a command in Termux, e.g. `/termux pkg upgrade -y` |
+| `/commands` | List your custom commands |
+| `/logs` | Recent bot and start log lines |
+| `/new` | Start a new Claude conversation (Claude forgets earlier messages) |
+| `/cancel` | Stop the Claude request that is running |
 
-### Limits
+Shell commands time out after 120 s; long output is cut to its last ~3,500 characters (pipe
+through `tail` for long output).
 
-- **Permission prompts can't be answered from Telegram.** Anything not pre-allowed in
-  `~/workspace/.claude/settings.json` (empty by default; the trips example allows WebSearch,
-  WebFetch, Read/Edit inside the workspace)
-  pauses the session until someone answers in the terminal. If the bot goes quiet, run `shield`
-  and look.
-- **Slash commands** (`/clear`, `/model`, …) only work in the terminal.
-- **Usage counts against your Claude plan**, shared with your other Claude apps.
-- **Messages only arrive while the session runs.** It restarts by itself after `/exit` or a
-  crash, and after a reboot when Termux is opened (see [USAGE.md](USAGE.md)).
+## Talking to Claude
 
-### Giving Claude more power (optional)
+Plain messages go to Claude Code, running headless in Debian's `~/workspace` with your Claude
+subscription. Telegram shows "typing…" while Claude works; one request runs at a time (others
+are queued). The conversation continues across messages until you send `/new`.
 
-To let Claude run shell commands unattended, add rules to `~/workspace/.claude/settings.json`, e.g.
-read-only checks:
+Claude's behaviour is defined by `~/workspace/CLAUDE.md` (installed from
+[`shield/debian/workspace`](../shield/debian/workspace)): short phone-friendly answers, never
+pay or handle passwords, ask before destructive actions, and **how to create bot commands**.
 
-```json
-{
-  "permissions": {
-    "allow": [
-      "WebSearch", "WebFetch", "Read(./**)", "Edit(./**)",
-      "Bash(df:*)", "Bash(free:*)", "Bash(uptime)", "Bash(date)", "Bash(ls:*)"
-    ]
-  }
-}
+Claude can send files back: it puts `SEND_FILE: /path` in its answer and the bot attaches the
+file.
+
+### What Claude may do
+
+Running headless, Claude can't ask for permission mid-task, so tools are pre-allowed in
+`~/workspace/.claude/settings.json`: shell (`Bash`), reading/writing files, web search and
+fetching pages. Anything else is refused (`--permission-mode dontAsk`). To restrict Claude,
+remove entries from that file, e.g. drop `"Bash"` so Claude can write commands but not run
+them.
+
+## Your own commands
+
+Every **executable file** in `/root/workspace/commands/` (inside Debian) is a command; the file
+name is the command name. The bot rescans the folder on every message and updates Telegram's
+command menu, so new commands work immediately. Write them yourself or ask Claude.
+
+```bash
+#!/bin/bash
+# description: Shield uptime, free memory and disk
+uptime -p
+awk '/MemAvailable/ {printf "%d MB free\n", $2/1024}' /proc/meminfo
+df -h / | awk 'NR==2 {print $4 " disk free"}'
 ```
 
-Claude runs as **root inside Debian**, and Debian can reach Termux's files. Every rule you add is
-something anyone on the allowlist can trigger from Telegram.
+- Names: lowercase letters, digits, `_`, max 32 characters; built-in names are reserved.
+- The `# description:` line (within the first lines) is shown in Telegram's menu and `/help`.
+- Arguments are passed through: `/plug on` runs `commands/plug on`.
+- Commands run as root with cwd `/root/workspace` and are stopped after 120 s.
+- Keep secrets in `/root/workspace/.secrets/` (mode 600), never in the command file.
 
-## Revoking access
+Examples you can ask Claude for: *"create /plug that switches my Shelly plug at 192.168.1.50 on
+or off"*, *"create /ar4k that runs a command on my gaming PC over SSH"* (Claude creates a key
+and tells you where to authorize it), *"create /backup that copies ~/workspace to my NAS"*.
 
-- Telegram: `/revoke` (new token) or `/deletebot` in @BotFather.
-- Claude sign-in: `/logout` in Claude Code on the Shield, or remove the device in your Claude
-  account settings.
+## Security
+
+- Only user IDs in `allowed_user_ids` get answers, and only in private chats; others are
+  ignored and logged. Messages sent while the bot was offline are discarded, so old commands
+  are never replayed.
+- `/sh` and Claude both have **root in Debian** (and Debian can reach Termux's files). Whoever
+  controls your Telegram account controls the Shield: enable Telegram's two-step verification.
+- Claude treats web pages and command output as data, but prompt injection is a real risk for
+  any agent with a shell. Restrict `settings.json` if that worries you.
+- The token lives only in `~/.config/shield-bot/config.json` (Termux, mode 600).
+
+## Troubleshooting
+
+- **No answer:** `shield status` (is the bot running?), then on the Shield
+  `tail ~/.termux/boot/shield-bot.log` and `~/.termux/boot/shield-bot.err`.
+  "ignored message from user N" means N isn't in `allowed_user_ids`.
+- **`409 Conflict` in the log:** another program reads the same bot (only one reader is
+  possible). Typical cause: Claude Code's old Telegram channel plugin; remove it with
+  `claude plugin uninstall telegram@claude-plugins-official` and delete
+  `~/.claude/channels/telegram` in Debian.
+- **A reply hangs:** `kill -USR1 $(pgrep -f "shield-bot.py --run")` in Termux writes every
+  thread's stack to `shield-bot.err`.
+- **Change settings:** edit the config (or run `shield bot-setup` again), then
+  `/termux pkill -f "shield-bot.py --run"`; the bot restarts with the new config in 10 s.

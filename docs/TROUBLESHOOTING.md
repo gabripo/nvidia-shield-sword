@@ -27,20 +27,24 @@ the tools pass `-o UseKeychain=yes`.
 ### The `claude` tmux session disappears right after starting
 
 `proot-distro login` kills every process inside Debian when the login command exits. That's why
-`start-claude.sh` keeps a background login alive (`while tmux has-session …; sleep 60`).
+`start-claude.sh` keeps a background login alive (`while tmux has-session …; sleep 30`).
 
 ### `shield` not found
 
 `~/.local/bin` isn't on your PATH: `mac/install.sh` adds it to `~/.zshrc`; open a new Terminal
 window or `source ~/.zshrc`.
 
-### Telegram bot doesn't answer
+### Telegram bot doesn't answer, or answers late
 
-1. `shield status`: is Claude running? If not, `shield start`.
-2. `shield`: is a permission prompt waiting? Answer it (choose "don't ask again" if it's safe).
-3. Did the startup screen show the "Channels (experimental)" banner? If not, the session was
-   started without `--channels`: `shield stop && shield start`.
-4. Is the token valid? Re-run `/telegram:configure <token>` and `/exit`.
+1. `shield status`: is the bot running? If not, `shield start`.
+2. On the Shield: `tail ~/.termux/boot/shield-bot.log ~/.termux/boot/shield-bot.err`.
+3. **`409 Conflict`**: another program reads the same bot. Only one reader is possible; remove
+   Claude Code's old Telegram channel plugin if it's installed (see [TELEGRAM.md](TELEGRAM.md)).
+4. **Replies late after the TV slept**: connections to Telegram's IPv6 address can hang while
+   the TV is in standby. shield-bot uses IPv4 only for that reason; if you write your own tools,
+   do the same (e.g. `curl -4`).
+5. Claude answers but refuses an action: it isn't pre-allowed in
+   `~/workspace/.claude/settings.json` (headless Claude can't ask).
 
 ### Termux:Boot doesn't start anything after a reboot
 
@@ -53,9 +57,10 @@ Debian defaults to UTC. Set `SHIELD_TIMEZONE` in your config and re-run
 `setup/install.sh --from debian`, or inside Debian:
 `ln -sf /usr/share/zoneinfo/Europe/Zurich /etc/localtime`.
 
-### Two `proot` processes
+### A reply hangs
 
-Harmless: a second keepalive from an earlier double start. Gone after the next reboot.
+`kill -USR1 $(pgrep -f "shield-bot.py --run")` in Termux writes every thread's stack to
+`~/.termux/boot/shield-bot.err`.
 
 ### Things that did not work on the Shield (so you don't have to try)
 
@@ -65,3 +70,6 @@ Harmless: a second keepalive from an earlier double start. Gone after the next r
 - **Headless Chromium screenshots** of heavy booking sites: simple pages work, but large sites
   hang (≈600 MB free RAM), and SwiftShader rendering segfaults under proot.
 - **agent-browser** on Android: the npm package ships an empty Android binary.
+- **Claude Code's Telegram channel plugin** as the bot: works, but every message costs Claude
+  usage, permission prompts can't be answered remotely, and it can't coexist with a second
+  reader of the same bot. Replaced by `shield-bot`, which calls Claude only when needed.

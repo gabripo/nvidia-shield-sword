@@ -1,8 +1,8 @@
 #!/bin/zsh
 # nvidia-shield-sword installer - run on the Mac.
 #
-# Sets up Termux, a Debian container, Claude Code, Bun and the Telegram channel
-# plugin on an NVIDIA Shield (Android TV, arm64) connected over network ADB.
+# Sets up Termux, a Debian container, Claude Code and the Telegram bot (shield-bot)
+# on an NVIDIA Shield (Android TV, arm64) connected over network ADB.
 #
 # Usage: setup/install.sh [--from STAGE]
 #   Stages, in order: termux-app, termux-bootstrap, termux, debian, files
@@ -91,23 +91,27 @@ if want termux; then
 fi
 
 if want debian; then
-  step "Debian: Claude Code, Bun, tmux"
+  step "Debian: Claude Code, tmux"
   remote "proot-distro login debian -- env SHIELD_TIMEZONE='$SHIELD_TIMEZONE' bash -s" < "$REPO/setup/debian-setup.sh"
 fi
 
 if want files; then
-  step "Installing autostart"
-  remote 'mkdir -p ~/.termux/boot && cat > ~/.termux/boot/start-claude.sh && chmod 700 ~/.termux/boot/start-claude.sh' \
-    < "$REPO/shield/termux/start-claude.sh"
+  step "Installing the bot, autostart and workspace"
+  for f in start-shield.sh start-claude.sh shield-bot.py; do
+    remote "mkdir -p ~/.termux/boot && cat > ~/.termux/boot/$f && chmod 700 ~/.termux/boot/$f" < "$REPO/shield/termux/$f"
+  done
   remote 'f=~/.bashrc; touch $f; sed -i "/>>> nvidia-shield-sword autostart >>>/,/<<< nvidia-shield-sword autostart <<</d" $f; cat >> $f; chmod 600 $f' \
     < "$REPO/shield/termux/bashrc-autostart.sh"
+  # Workspace template (CLAUDE.md, .claude/settings.json, commands/) without overwriting your edits.
+  # --no-xattrs/--no-mac-metadata: GNU tar on the Shield warns about macOS extended attributes.
+  COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -C "$REPO/shield/debian" -cf - workspace |
+    remote 'proot-distro login debian -- tar -C /root --skip-old-files -xf -'
 fi
 
 step "Done"
 cat <<EOF
 Next steps (see docs/SETUP.md and docs/TELEGRAM.md):
-  1. Install the Mac helper:      mac/install.sh
-  2. Sign in to Claude:           shield debian   then   claude   (choose your Claude subscription)
-  3. Install the Telegram plugin: claude plugin install telegram@claude-plugins-official --scope user
-  4. Create the bot, configure the token and pair your account (docs/TELEGRAM.md)
+  1. Install the Mac helper:  mac/install.sh
+  2. Sign in to Claude:       shield debian   then   cd ~/workspace && claude   (Claude subscription)
+  3. Create a Telegram bot with @BotFather, then:   shield bot-setup
 EOF

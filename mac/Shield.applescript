@@ -4,12 +4,12 @@
 set shieldCmd to (POSIX path of (path to home folder)) & ".local/bin/shield"
 
 set choices to {¬
-	"Claude Code session (Telegram bot)", ¬
+	"Claude Code session", ¬
 	"Debian shell", ¬
 	"Termux shell", ¬
 	"Status", ¬
-	"Start Claude", ¬
-	"Stop Claude"}
+	"Start services (sshd + Telegram bot)", ¬
+	"Close Claude session"}
 set commandFor to {"claude", "debian", "termux", "status", "start", "stop"}
 
 set picked to choose from list choices with title "NVIDIA Shield" with prompt "Open on the Shield:" default items {item 1 of choices} OK button name "Open" cancel button name "Cancel"
@@ -21,7 +21,7 @@ repeat with i from 1 to count of choices
 end repeat
 
 if subcommand is "stop" then
-	display dialog "Stop the Claude session on the Shield? The Telegram bot goes offline until you start it again." buttons {"Cancel", "Stop"} default button "Cancel" cancel button "Cancel" with icon caution
+	display dialog "Close the interactive Claude session on the Shield? The Telegram bot keeps running." buttons {"Cancel", "Close"} default button "Cancel" cancel button "Cancel" with icon caution
 end if
 
 tell application "Terminal"

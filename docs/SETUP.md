@@ -7,7 +7,7 @@ What you need:
 - A Claude Pro or Max subscription (or an Anthropic API key)
 - Telegram on your phone
 
-About 2.5 GB of free storage on the Shield is needed (Termux, Debian, Node.js, Claude Code, Bun).
+About 2.5 GB of free storage on the Shield is needed (Termux, Debian, Node.js, Claude Code).
 
 ## 1. Enable network ADB on the Shield
 
@@ -61,8 +61,8 @@ Stages (each prints what it does):
 | `termux-app` | Downloads the latest Termux release from GitHub (arm64) and installs it with adb. Skipped if Termux is installed. |
 | `termux-bootstrap` | Opens Termux on the TV and **types one command into it** (watch the TV, don't touch the remote): pins the official package mirror, upgrades all packages, installs OpenSSH, adds your public key and starts `sshd`. Then waits for SSH. |
 | `termux` | Installs `proot-distro` and the Debian trixie container `debian`. |
-| `debian` | Installs tmux, Node.js, Claude Code, Bun; sets the time zone. |
-| `files` | Installs `~/.termux/boot/start-claude.sh` and the `~/.bashrc` autostart hook. |
+| `debian` | Installs tmux, Node.js and Claude Code; sets the time zone. |
+| `files` | Installs the bot (`shield-bot.py`), `start-shield.sh`, `start-claude.sh`, the `~/.bashrc` autostart hook and the `~/workspace` template (existing files are kept). |
 
 If a stage fails, fix the cause and resume, e.g. `setup/install.sh --from debian`.
 
@@ -81,13 +81,8 @@ mkdir -p ~/workspace && cd ~/workspace && claude
 3. Accept **"Yes, I trust this folder"** for `~/workspace`.
 4. `/status` shows your account. Then `/exit`.
 
-Install the Telegram channel plugin (user scope, available in every folder):
-
-```bash
-claude plugin install telegram@claude-plugins-official --scope user
-```
-
-Continue with **[TELEGRAM.md](TELEGRAM.md)**.
+The Telegram bot uses this sign-in for its Claude requests. Continue with
+**[TELEGRAM.md](TELEGRAM.md)** (create the bot, `shield bot-setup`).
 
 ## Optional: Termux:Boot
 

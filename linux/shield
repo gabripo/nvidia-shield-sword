@@ -2,15 +2,15 @@
 # shield - open SSH sessions on the NVIDIA Shield (Termux / Debian / Claude Code).
 # Linux version of mac/shield.
 #
-# Usage: shield [claude|debian|termux|status|start|stop|help]
-#   claude  attach to the Claude Code tmux session in Debian (default),
-#           starting it first if needed. Leave with Ctrl+b then d; /exit only
-#           restarts Claude after 15 s (the Telegram bot stays online).
-#   debian  open a Debian shell
-#   termux  open a Termux shell
-#   status  show whether Termux, Debian and Claude are running
-#   start   start Claude (the tmux session) if it isn't running
-#   stop    stop the Claude tmux session (the Telegram bot goes offline)
+# Usage: shield [claude|debian|termux|status|start|stop|bot-setup|help]
+#   claude     interactive Claude Code in ~/workspace (tmux session "claude", started if
+#              needed). Leave it running with Ctrl+b then d; /exit closes it.
+#   debian     open a Debian shell
+#   termux     open a Termux shell
+#   status     sshd, Telegram bot, Claude session, last start
+#   start      start sshd and the Telegram bot (also wakes Termux through adb)
+#   stop       close the interactive Claude session (the Telegram bot keeps running)
+#   bot-setup  configure the Telegram bot (token, allowed users), then (re)start it
 #
 # Settings come from ~/.config/shield/config (see config.example);
 # environment variables of the same name override them.
@@ -73,11 +73,11 @@ case "$cmd" in
   claude)
     ensure_up
     if ! remote "proot-distro login debian -- tmux has-session -t claude" 2>/dev/null; then
-      say "Claude session not running - starting it..."
+      say "Starting an interactive Claude session..."
       remote "sh ~/.termux/boot/start-claude.sh"
-      sleep 8
+      sleep 6
     fi
-    say "Attaching to Claude. Detach (leave it running) with Ctrl+b then d."
+    say "Attaching to Claude. Leave it running with Ctrl+b then d; /exit closes it."
     exec ssh -t "${SSH_OPTS[@]}" "$SHIELD_HOST" "proot-distro login debian -- tmux attach -t claude"
     ;;
   debian)
@@ -89,25 +89,34 @@ case "$cmd" in
     exec ssh -t "${SSH_OPTS[@]}" "$SHIELD_HOST"
     ;;
   status)
-    if ssh_up; then echo "Termux/SSH: running ($SHIELD_HOST:$SHIELD_SSH_PORT)"
-    else echo "Termux/SSH: not reachable (run 'shield start' or open Termux)"; exit 0; fi
-    # "[p]root" keeps pgrep from matching this command line itself.
-    remote 'pgrep -f "[p]root .*installed-rootfs/debian|[p]root .*containers/debian" >/dev/null && echo "Debian:     running" || echo "Debian:     not running"
+    if ssh_up; then echo "Termux/SSH:   running ($SHIELD_HOST:$SHIELD_PORT)"
+    else echo "Termux/SSH:   not reachable (run 'shield start' or open Termux)"; exit 0; fi
+    # "[x]" patterns keep pgrep from matching this command line itself.
+    remote 'pgrep -f "[s]hield-bot.py --run" >/dev/null && echo "Telegram bot: running" \
+              || { [ -f ~/.config/shield-bot/config.json ] && echo "Telegram bot: not running (shield start)" \
+                   || echo "Telegram bot: not configured (shield bot-setup)"; }
             proot-distro login debian -- tmux has-session -t claude 2>/dev/null \
-              && echo "Claude:     running (tmux session claude)" || echo "Claude:     not running"
-            echo "Last start: $(tail -2 ~/.termux/boot/start-claude.log | tr "\n" " ")"'
+              && echo "Claude:       interactive session open (shield claude)" || echo "Claude:       no interactive session"
+            echo "Last start:   $(grep -v "^$" ~/.termux/boot/start-shield.log 2>/dev/null | tail -2 | tr "\n" " ")"'
     ;;
   start)
     ensure_up
-    remote "sh ~/.termux/boot/start-claude.sh"; sleep 8
-    remote "tail -1 ~/.termux/boot/start-claude.log"
+    remote "sh ~/.termux/boot/start-shield.sh"; sleep 3
+    remote "tail -1 ~/.termux/boot/start-shield.log"
     ;;
   stop)
     ssh_up || die "SSH not reachable - nothing to stop."
-    remote "proot-distro login debian -- tmux kill-session -t claude" && say "Claude session stopped."
+    remote "proot-distro login debian -- tmux kill-session -t claude" 2>/dev/null \
+      && say "Interactive Claude session closed (the Telegram bot keeps running)." \
+      || say "No interactive Claude session was open."
+    ;;
+  bot-setup)
+    ensure_up
+    # After setup, stop a running bot (the loop restarts it in 10 s with the new config) or start it.
+    exec ssh -t "${SSH_OPTS[@]}" "$SHIELD_HOST" 'python3 ~/.termux/boot/shield-bot.py --setup && { pkill -f "[s]hield-bot.py --run" && echo "Bot restarting with the new config..." || sh ~/.termux/boot/start-shield.sh; }'
     ;;
   help|-h|--help)
-    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n "2,$(grep -n '^# environment variables of the same name' "$0" | cut -d: -f1)p" "$0" | sed 's/^# \{0,1\}//'
     ;;
   *) die "unknown command: $cmd (try: shield help)" ;;
 esac

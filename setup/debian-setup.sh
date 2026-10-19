@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs inside the Debian container as root (piped by setup/install.sh through
-# `proot-distro login debian -- bash -s`). Installs Claude Code, Bun and tmux.
+# `proot-distro login debian -- bash -s`). Installs Claude Code and tmux.
 set -euo pipefail
 
 # proot-distro appends Termux's bin to PATH; keep Debian's own tools first and only.
@@ -25,14 +25,6 @@ echo "==> Node $(node --version), npm $(npm --version)"
 echo "==> Claude Code"
 npm install -g --no-fund --no-audit @anthropic-ai/claude-code >/dev/null
 echo "    $(claude --version)"
-
-echo "==> Bun (needed by the Telegram channel plugin)"
-if [ ! -x "$HOME/.bun/bin/bun" ]; then
-  curl -fsSL https://bun.sh/install -o /tmp/bun-install.sh
-  bash /tmp/bun-install.sh >/dev/null
-  rm -f /tmp/bun-install.sh
-fi
-echo "    bun $("$HOME/.bun/bin/bun" --version)"
 
 # Claude Code asks for focus events (it uses them to track whether its window is active).
 grep -qs 'focus-events on' "$HOME/.tmux.conf" || echo 'set -g focus-events on' >> "$HOME/.tmux.conf"
