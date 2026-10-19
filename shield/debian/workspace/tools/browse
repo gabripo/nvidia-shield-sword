@@ -1,0 +1,3 @@
+#!/bin/sh
+# Wrapper so Claude (and you) can run: tools/browse flights "..." | tools/browse shot <url>
+exec node "$(dirname "$0")/browse.js" "$@"

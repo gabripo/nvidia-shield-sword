@@ -7,7 +7,7 @@ What you need:
 - A Claude Pro or Max subscription (or an Anthropic API key)
 - Telegram on your phone
 
-About 2.5 GB of free storage on the Shield is needed (Termux, Debian, Node.js, Claude Code).
+About 3.5 GB of free storage on the Shield is needed (Termux, Debian, Node.js, Claude Code, Chromium).
 
 ## 1. Enable network ADB on the Shield
 

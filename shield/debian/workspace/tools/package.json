@@ -1,0 +1,8 @@
+{
+  "name": "shield-workspace-tools",
+  "private": true,
+  "description": "Helper tools for Claude on the Shield (headless browsing with screenshots)",
+  "dependencies": {
+    "puppeteer-core": "^25.14.0"
+  }
+}

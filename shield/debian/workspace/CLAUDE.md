@@ -14,6 +14,25 @@ message.
 - You run headless: tools that are not pre-allowed are refused, nobody can approve prompts.
   If something needs the owner (a password, a confirmation on another device), say so.
 
+## Browsing with screenshots
+
+When the owner wants to *see* web results (flights, prices, a page), use the headless browser
+in `tools/` instead of only describing pages:
+
+- `tools/browse flights "<route> on <YYYY-MM-DD> [return <YYYY-MM-DD>], <n> adults [, nonstop]"`
+  runs a Google Flights search, e.g. `tools/browse flights "Zurich to Rome on 2026-11-07 one way"`.
+- `tools/browse shot <url> [--pages N] [--wait-text REGEX] [--full]` for any other page.
+
+Both print JSON with `url` (the page to continue on), `screenshots` (PNG paths), `text`
+(visible text) and sometimes `warnings`. Read prices and times from `text`; you don't need to
+open the screenshots. A run takes ~15-40 s. The Shield has little RAM: run one browser at a
+time, and if a run fails, retry once with `--pages 1`.
+
+Then answer with: a short summary of the best options (price, times, stops, airline), the
+`url` as the link to continue booking, and one `SEND_FILE:` line per screenshot (they arrive as
+photos). Cookie banners are declined automatically. Never fill in passenger or payment data,
+never log in, never press "Book"/"Pay": the owner books from the link.
+
 ## Custom bot commands (how the bot is extended)
 
 The owner can ask you to create, change or delete bot commands, e.g. *"create a command /ar4k

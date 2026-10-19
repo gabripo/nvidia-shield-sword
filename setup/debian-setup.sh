@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs inside the Debian container as root (piped by setup/install.sh through
-# `proot-distro login debian -- bash -s`). Installs Claude Code and tmux.
+# `proot-distro login debian -- bash -s`). Installs Claude Code, tmux and Chromium.
 set -euo pipefail
 
 # proot-distro appends Termux's bin to PATH; keep Debian's own tools first and only.
@@ -10,7 +10,10 @@ TZ_NAME="${SHIELD_TIMEZONE:-UTC}"
 
 echo "==> Debian: apt packages"
 apt-get update -qq
-apt-get install -y -qq ca-certificates curl git tmux unzip tzdata nodejs npm >/dev/null
+apt-get install -y -qq ca-certificates curl git tmux tzdata nodejs npm >/dev/null
+# Headless browser for tools/browse (web pages + screenshots), with fonts so text renders.
+apt-get install -y -qq --no-install-recommends chromium fonts-dejavu-core fonts-noto-color-emoji >/dev/null
+echo "    $(chromium --version)"
 
 echo "==> Time zone: $TZ_NAME"
 if [ -f "/usr/share/zoneinfo/$TZ_NAME" ]; then

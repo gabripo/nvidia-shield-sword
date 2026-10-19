@@ -68,7 +68,7 @@ message and `shield-bot.err` the bot's errors.
 | Termux `~/.termux/boot/start-claude.sh` | Opens the interactive Claude session (`shield claude`) |
 | Termux `~/.config/shield-bot/config.json` | Bot token, allowed user IDs, options (mode 600) |
 | Termux `~/.bashrc` | Autostart hook (between `nvidia-shield-sword autostart` markers) |
-| Debian `/root/workspace/` | Claude's workspace: `CLAUDE.md`, `.claude/settings.json`, `commands/` (your bot commands) |
+| Debian `/root/workspace/` | Claude's workspace: `CLAUDE.md`, `.claude/settings.json`, `commands/` (your bot commands), `tools/browse` (headless browser), `screenshots/` (kept one day) |
 | Debian `/root/.claude/` | Claude sign-in and conversations |
 
 ## Updating

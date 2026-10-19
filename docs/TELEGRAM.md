@@ -73,6 +73,46 @@ fetching pages. Anything else is refused (`--permission-mode dontAsk`). To restr
 remove entries from that file, e.g. drop `"Bash"` so Claude can write commands but not run
 them.
 
+## Browsing with screenshots
+
+Debian has a headless Chromium and a small tool, `~/workspace/tools/browse`, that Claude uses
+when you want to *see* web results:
+
+```bash
+tools/browse flights "Zurich to Rome on 2026-11-07 one way"     # Google Flights search
+tools/browse shot https://example.com --pages 2                 # any page
+```
+
+It opens the page, declines cookie banners (the privacy-preserving choice), waits for the
+content, takes screenshots (viewport by viewport, saved in `~/workspace/screenshots`, deleted
+after a day) and prints JSON with the final `url`, the `screenshots` and the visible `text`.
+Claude reads prices and times from the text, answers with a summary and the link, and adds a
+`SEND_FILE:` line per screenshot; the bot sends images as **photos**.
+
+### Example: flights
+
+Send the bot:
+
+> Search flights from Zurich to Rome on 7 November, one way, and send me screenshots and the
+> link to book
+
+After about 1–3 minutes ("typing…" meanwhile) you get:
+
+1. a short summary of the best options (times, airline, stops, price, e.g. *"8:15 → 9:50
+   easyJet, nonstop, €101"*), notes such as "prices are currently high",
+2. the Google Flights link with your search, to continue and book yourself,
+3. two photos of the result list.
+
+Follow-ups continue the same conversation: *"what about returning on 10 November?"*,
+*"only nonstop flights after 10 am"*, *"compare with the train"*. Send `/new` to start over.
+
+Notes:
+
+- Claude never logs in, enters passenger data, or presses Book/Pay.
+- The Shield has ~1.4 GB of free RAM; with Claude running too, a browser run takes 20–60 s and
+  occasionally a second screenshot is skipped (the text and link are always returned).
+- Heavier sites may be slower or fail; Claude then tells you and still gives you links.
+
 ## Your own commands
 
 Every **executable file** in `/root/workspace/commands/` (inside Debian) is a command; the file

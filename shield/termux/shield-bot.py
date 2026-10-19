@@ -354,6 +354,7 @@ class ClaudeWorker:
         bot.send_plain(chat_id, text or "(file attached)")
         for path in files:
             bot.send_file(chat_id, path)
+        log(f"Claude replied ({len(text)} chars, {len(files)} file(s), {data.get('num_turns', '?')} turns)")
 
 
 CLAUDE = ClaudeWorker()
@@ -416,17 +417,30 @@ class Bot:
         if os.path.getsize(local) > 45 * 1024 * 1024:
             self.send_plain(chat_id, f"(file too large for Telegram: {debian_path})")
             return
-        boundary = uuid.uuid4().hex
         with open(local, "rb") as f:
             content = f.read()
+        name = os.path.basename(local)
+        # Images go out as photos (shown inline); Telegram rejects photos over 10 MB or with
+        # extreme proportions, so fall back to sending the file as a document.
+        if name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")) and len(content) < 10 * 1024 * 1024:
+            try:
+                return self._upload("sendPhoto", "photo", chat_id, name, content)
+            except Exception as e:
+                log(f"sendPhoto failed for {name} ({e!r}), sending as document")
+        self._upload("sendDocument", "document", chat_id, name, content)
+
+    def _upload(self, method, field, chat_id, name, content):
+        boundary = uuid.uuid4().hex
         body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n"
-                f"--{boundary}\r\nContent-Disposition: form-data; name=\"document\"; "
-                f"filename=\"{os.path.basename(local)}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+                f"--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; "
+                f"filename=\"{name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
                 ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
-        req = urllib.request.Request(self.base + "sendDocument", data=body,
+        req = urllib.request.Request(self.base + method, data=body,
                                      headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
         with urllib.request.urlopen(req, timeout=120) as r:
-            json.load(r)
+            res = json.load(r)
+        if not res.get("ok"):
+            raise RuntimeError(f"{method}: {res.get('description')}")
 
     def set_commands(self, cmds):
         menu = [{"command": n, "description": d[:250]} for n, d in BUILTINS.items()]
@@ -436,9 +450,9 @@ class Bot:
 
 def run_bot():
     cfg = load_config()
-    # `kill -USR1 <pid>` writes every thread's stack to shield-bot.err (for debugging hangs).
-    faulthandler.register(signal.SIGUSR1, file=open(os.path.join(BOOT_DIR, "shield-bot.err"), "a"),
-                          all_threads=True)
+    # `kill -USR1 <pid>` writes every thread's stack to stderr, which start-shield.sh
+    # appends to shield-bot.err (for debugging hangs).
+    faulthandler.register(signal.SIGUSR1, file=sys.stderr, all_threads=True)
     bot = Bot(cfg["token"])
     me = bot.call("getMe")
     log(f"started as @{me['username']}, allowed users {cfg['allowed_user_ids']}")

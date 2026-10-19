@@ -8,3 +8,7 @@ config
 
 .DS_Store
 __pycache__/
+
+# Workspace runtime files
+node_modules/
+shield/debian/workspace/screenshots/

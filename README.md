@@ -22,20 +22,36 @@ gets you into the Shield over SSH with one click.
 - **One bot, three layers**: built-ins and your commands cost no Claude usage; only free-form
   requests go to Claude ([docs/TELEGRAM.md](docs/TELEGRAM.md)).
 - **Extensible by Claude**: *"create a command /ar4k that connects via SSH to the gaming PC"*.
+- **Browses the web with screenshots**: a headless Chromium on the Shield lets Claude e.g. search
+  Google Flights and send you the results as photos plus a link to book (see below).
 - **Uses your Claude subscription** (Pro/Max): sign in once, same quota as the Claude apps.
 - **Locked to you**: only allowlisted Telegram user IDs, private chats only.
 - **Self-starting**: opening Termux (or `shield` from the Mac, via adb) starts sshd and the bot;
   the bot restarts by itself after a crash.
 
+## Example: searching flights from Telegram
+
+> **You:** Search flights from Zurich to Rome on 7 November, one way, and send me screenshots
+> and the link to book
+>
+> **Bot** (after ~1–3 min): a short list of the best options, e.g. *"8:15 → 9:50 easyJet,
+> nonstop, €101 · 12:25 → 14:00 SWISS, nonstop, €177 · …"*, the Google Flights link to continue
+> booking, and the result pages as **photos**.
+
+Claude runs `tools/browse flights "Zurich to Rome on 2026-11-07 one way"` in Debian: Chromium
+opens Google Flights, declines the cookie banner, waits for prices, takes screenshots and
+extracts the results as text. Claude never books or pays; you continue from the link.
+Details: [docs/TELEGRAM.md](docs/TELEGRAM.md#browsing-with-screenshots).
+
 ## Repository layout
 
 | Path | What it is |
 |---|---|
-| `setup/install.sh` | Mac-side installer: Termux, SSH, Debian, Claude Code, bot, autostart |
+| `setup/install.sh` | Mac-side installer: Termux, SSH, Debian, Claude Code, Chromium, bot, autostart |
 | `setup/termux-setup.sh`, `setup/debian-setup.sh` | Run on the Shield (piped over SSH by the installer) |
 | `setup/lib/typeline.py` | Types the one-time SSH bootstrap command into Termux via `adb shell input text` |
 | `shield/termux/` | `shield-bot.py` (the Telegram bot), `start-shield.sh` (sshd + bot), `start-claude.sh` (interactive Claude on demand), the `~/.bashrc` autostart hook |
-| `shield/debian/workspace/` | Claude's workspace template: `CLAUDE.md` (rules, how to create commands), pre-allowed tools, `commands/` |
+| `shield/debian/workspace/` | Claude's workspace template: `CLAUDE.md` (rules, how to create commands), pre-allowed tools, `commands/`, `tools/browse` (headless browser) |
 | `examples/trips/` | Optional trip-planning rules to add to the workspace |
 | `mac/` | `shield` command, `Shield.app` source (AppleScript + SVG icon), build and install scripts |
 | `linux/` | Linux version of the helper: `shield`, a zenity/kdialog menu and a desktop launcher ([docs/LINUX.md](docs/LINUX.md)) |
