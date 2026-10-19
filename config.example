@@ -1,0 +1,19 @@
+# nvidia-shield-sword configuration.
+# Copy to ~/.config/shield/config (mac/install.sh does this for you) and edit.
+# Used by setup/install.sh and by the `shield` command / Shield.app on the Mac.
+
+# IP address of the NVIDIA Shield on your home network.
+# Tip: give the Shield a fixed IP (DHCP reservation) in your router.
+SHIELD_HOST="192.168.1.100"
+
+# ADB over the network (Settings > Device Preferences > Developer options > Network debugging).
+SHIELD_ADB_PORT="5555"
+
+# Termux's sshd port (Termux default).
+SHIELD_SSH_PORT="8022"
+
+# SSH private key used to log in to Termux. Its .pub file is installed on the Shield.
+SHIELD_SSH_KEY="$HOME/.ssh/id_ed25519"
+
+# Time zone for Debian (should match the Shield's; adb shell getprop persist.sys.timezone).
+SHIELD_TIMEZONE="Europe/Zurich"

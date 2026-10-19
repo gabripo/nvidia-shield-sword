@@ -1,0 +1,10 @@
+# Build output of mac/build-app.sh
+mac/build/
+
+# Local settings and secrets: never commit these
+config
+*.env
+.env*
+
+.DS_Store
+__pycache__/

@@ -1,0 +1,99 @@
+#!/bin/zsh
+# shield - open SSH sessions on the NVIDIA Shield (Termux / Debian / Claude Code).
+#
+# Usage: shield [claude|debian|termux|status|start|stop|help]
+#   claude  attach to the Claude Code tmux session in Debian (default),
+#           starting it first if needed. Leave with Ctrl+b then d; /exit only
+#           restarts Claude after 15 s (the Telegram bot stays online).
+#   debian  open a Debian shell
+#   termux  open a Termux shell
+#   status  show whether Termux, Debian and Claude are running
+#   start   start Claude (the tmux session) if it isn't running
+#   stop    stop the Claude tmux session (the Telegram bot goes offline)
+#
+# Settings come from ~/.config/shield/config (see config.example);
+# environment variables of the same name override them.
+CONFIG="${SHIELD_CONFIG:-$HOME/.config/shield/config}"
+_env_host="${SHIELD_HOST:-}"
+[[ -f "$CONFIG" ]] && source "$CONFIG"
+[[ -n "$_env_host" ]] && SHIELD_HOST="$_env_host"
+[[ -n "${SHIELD_HOST:-}" ]] || { print -P "%F{red}shield:%f no SHIELD_HOST - create $CONFIG (see config.example)" >&2; exit 1; }
+SHIELD_SSH_PORT="${SHIELD_SSH_PORT:-8022}"
+SHIELD_ADB_PORT="${SHIELD_ADB_PORT:-5555}"
+SHIELD_SSH_KEY="${SHIELD_SSH_KEY:-$HOME/.ssh/id_ed25519}"
+SHIELD_ADB="$SHIELD_HOST:$SHIELD_ADB_PORT"
+SHIELD_PORT="$SHIELD_SSH_PORT"
+# Apps started from Finder don't get Homebrew's PATH, so look in the usual places too.
+ADB="${ADB:-$(command -v adb || ls /opt/homebrew/bin/adb /usr/local/bin/adb 2>/dev/null | head -1)}"
+
+SSH_OPTS=(-p "$SHIELD_PORT" -i "$SHIELD_SSH_KEY" -o UseKeychain=yes -o ConnectTimeout=5
+          -o ServerAliveInterval=30 -o StrictHostKeyChecking=accept-new)
+
+say() { print -P "%F{cyan}shield:%f $*"; }
+die() { print -P "%F{red}shield:%f $*" >&2; exit 1; }
+
+ssh_up() { nc -z -G 2 "$SHIELD_HOST" "$SHIELD_PORT" >/dev/null 2>&1; }
+
+# Make sure sshd answers. If not, open the Termux app through adb: its ~/.bashrc
+# starts sshd, Debian and the Claude session.
+ensure_up() {
+  ssh_up && return 0
+  say "SSH not reachable - waking the Shield and opening Termux via adb..."
+  [[ -x "$ADB" ]] || die "adb not found at $ADB (set ADB=/path/to/adb)"
+  "$ADB" connect "$SHIELD_ADB" >/dev/null 2>&1
+  "$ADB" -s "$SHIELD_ADB" get-state >/dev/null 2>&1 \
+    || die "adb can't reach $SHIELD_ADB. Is the Shield on, and Network debugging enabled?"
+  "$ADB" -s "$SHIELD_ADB" shell input keyevent 224 >/dev/null 2>&1   # wake screen
+  "$ADB" -s "$SHIELD_ADB" shell am start -n com.termux/com.termux.app.TermuxActivity >/dev/null 2>&1
+  for i in {1..24}; do
+    sleep 5
+    ssh_up && { say "SSH is up."; return 0; }
+  done
+  die "Termux opened but SSH didn't come up within 2 minutes. Open Termux on the TV and check."
+}
+
+remote() { ssh "${SSH_OPTS[@]}" "$SHIELD_HOST" "$@"; }
+
+cmd="${1:-claude}"
+case "$cmd" in
+  claude)
+    ensure_up
+    if ! remote "proot-distro login debian -- tmux has-session -t claude" 2>/dev/null; then
+      say "Claude session not running - starting it..."
+      remote "sh ~/.termux/boot/start-claude.sh"
+      sleep 8
+    fi
+    say "Attaching to Claude. Detach (leave it running) with Ctrl+b then d."
+    exec ssh -t "${SSH_OPTS[@]}" "$SHIELD_HOST" "proot-distro login debian -- tmux attach -t claude"
+    ;;
+  debian)
+    ensure_up
+    exec ssh -t "${SSH_OPTS[@]}" "$SHIELD_HOST" "proot-distro login debian"
+    ;;
+  termux)
+    ensure_up
+    exec ssh -t "${SSH_OPTS[@]}" "$SHIELD_HOST"
+    ;;
+  status)
+    if ssh_up; then echo "Termux/SSH: running ($SHIELD_HOST:$SHIELD_PORT)"
+    else echo "Termux/SSH: not reachable (run 'shield start' or open Termux)"; exit 0; fi
+    # "[p]root" keeps pgrep from matching this command line itself.
+    remote 'pgrep -f "[p]root .*installed-rootfs/debian|[p]root .*containers/debian" >/dev/null && echo "Debian:     running" || echo "Debian:     not running"
+            proot-distro login debian -- tmux has-session -t claude 2>/dev/null \
+              && echo "Claude:     running (tmux session claude)" || echo "Claude:     not running"
+            echo "Last start: $(tail -2 ~/.termux/boot/start-claude.log | tr "\n" " ")"'
+    ;;
+  start)
+    ensure_up
+    remote "sh ~/.termux/boot/start-claude.sh"; sleep 8
+    remote "tail -1 ~/.termux/boot/start-claude.log"
+    ;;
+  stop)
+    ssh_up || die "SSH not reachable - nothing to stop."
+    remote "proot-distro login debian -- tmux kill-session -t claude" && say "Claude session stopped."
+    ;;
+  help|-h|--help)
+    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    ;;
+  *) die "unknown command: $cmd (try: shield help)" ;;
+esac
