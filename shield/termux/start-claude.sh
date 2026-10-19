@@ -20,7 +20,9 @@ done
 # login stays in the background for as long as the tmux session lives.
 nohup proot-distro login debian -- bash -lc '
   # new-session fails if "claude" already exists, so two parallel starts cannot both win.
-  tmux new-session -d -s claude "cd ~/trips && while true; do claude --channels plugin:telegram@claude-plugins-official; sleep 15; done" 2>/dev/null \
+  # Claude works in ~/workspace; it is (re)created on every start so a deleted folder
+  # can never stop the bot from coming back.
+  tmux new-session -d -s claude "mkdir -p ~/workspace && cd ~/workspace && while true; do claude --channels plugin:telegram@claude-plugins-official; sleep 15; done" 2>/dev/null \
     || { echo "claude session already running"; exit 0; }
   echo "claude session started"
   while tmux has-session -t claude 2>/dev/null; do sleep 60; done

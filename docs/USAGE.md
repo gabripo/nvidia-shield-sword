@@ -60,7 +60,7 @@ On the Shield, `~/.termux/boot/start-claude.log` records every start.
 |---|---|
 | Termux `~/.termux/boot/start-claude.sh` | Starts sshd, Debian and Claude |
 | Termux `~/.bashrc` | Autostart hook (between `nvidia-shield-sword autostart` markers) |
-| Debian `/root/trips/` | Claude's workspace: `CLAUDE.md`, `.claude/settings.json`, your trip plans |
+| Debian `/root/workspace/` | Claude's working folder (recreated if missing); add a `CLAUDE.md` and `.claude/settings.json` to shape it |
 | Debian `/root/.claude/` | Claude sign-in, plugins, Telegram token and allowlist |
 
 ## Updating

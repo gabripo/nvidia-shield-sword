@@ -7,7 +7,7 @@ from your phone through a **Telegram bot**. A small **macOS helper** (`shield` c
 `Shield.app`) gets you into the Shield over SSH with one click.
 
 ```
- Phone (Telegram) ──► @your_bot ──► Claude Code (tmux "claude") ──► web search, files in ~/trips
+ Phone (Telegram) ──► @your_bot ──► Claude Code (tmux "claude") ──► web search, files in ~/workspace
                                         │
  Mac ── Shield.app / `shield` ── SSH ───┤  Debian (proot-distro) inside Termux on the Shield
                                         │
@@ -19,8 +19,9 @@ from your phone through a **Telegram bot**. A small **macOS helper** (`shield` c
 - **Telegram** via Claude Code's official [channels](https://code.claude.com/docs/en/channels)
   plugin, locked to your own account with an allowlist.
 - **Restarts itself**: Claude is relaunched 15 s after any exit, so the bot stays online.
-- **Example workspace**: `~/trips` with rules for planning trips (proposes options with sources,
-  never books or pays).
+- **Workspace**: Claude works in `~/workspace` (recreated automatically if deleted).
+  [`examples/trips`](examples/trips) adds rules for planning trips (proposes options with
+  sources, never books or pays).
 
 ## Repository layout
 
@@ -30,7 +31,7 @@ from your phone through a **Telegram bot**. A small **macOS helper** (`shield` c
 | `setup/termux-setup.sh`, `setup/debian-setup.sh` | Run on the Shield (piped over SSH by the installer) |
 | `setup/lib/typeline.py` | Types the one-time SSH bootstrap command into Termux via `adb shell input text` |
 | `shield/termux/` | `start-claude.sh` (starts sshd + Debian + Claude) and the `~/.bashrc` autostart hook |
-| `shield/debian/trips/` | Workspace for Claude: `CLAUDE.md` rules + pre-allowed tools |
+| `examples/trips/` | Optional trip-planning setup for the workspace: `CLAUDE.md` rules + pre-allowed tools |
 | `mac/` | `shield` command, `Shield.app` source (AppleScript + SVG icon), build and install scripts |
 | `linux/` | Linux version of the helper: `shield`, a zenity/kdialog menu and a desktop launcher ([docs/LINUX.md](docs/LINUX.md)) |
 | `config.example` | Settings (Shield IP, SSH key, time zone) |

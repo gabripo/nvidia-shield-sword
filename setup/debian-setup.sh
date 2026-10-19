@@ -34,5 +34,5 @@ if [ ! -x "$HOME/.bun/bin/bun" ]; then
 fi
 echo "    bun $("$HOME/.bun/bin/bun" --version)"
 
-mkdir -p "$HOME/trips/.claude"
+mkdir -p "$HOME/workspace"
 echo "==> Debian setup done"

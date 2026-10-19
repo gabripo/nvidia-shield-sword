@@ -54,19 +54,21 @@ Then leave the session running: **Ctrl+b**, then **d** (tmux detach).
 
 ## How steering works
 
-You write plain language; Claude works in `~/trips` inside Debian and answers in the chat.
+You write plain language; Claude works in `~/workspace` inside Debian and answers in the chat.
+The examples below assume the trip-planning rules from [`examples/trips`](../examples/trips).
 It can send files back (e.g. `options.md`) as Telegram documents.
 
 | You send | Claude |
 |---|---|
-| "Plan 3 days in Florence from Zurich, 7–9 Nov, 2 people, train preferred" | researches, proposes 2–3 options with sources, saves them under `~/trips/` |
+| "Plan 3 days in Florence from Zurich, 7–9 Nov, 2 people, train preferred" | researches, proposes 2–3 options with sources, saves them in the workspace |
 | "Option 2 — send me the summary file" | sends booking links + checklist and the file |
 | "Check prices again for option 2" | re-checks and says when |
 
 ### Limits
 
 - **Permission prompts can't be answered from Telegram.** Anything not pre-allowed in
-  `~/trips/.claude/settings.json` (by default: WebSearch, WebFetch, Read/Edit inside `~/trips`)
+  `~/workspace/.claude/settings.json` (empty by default; the trips example allows WebSearch,
+  WebFetch, Read/Edit inside the workspace)
   pauses the session until someone answers in the terminal. If the bot goes quiet, run `shield`
   and look.
 - **Slash commands** (`/clear`, `/model`, …) only work in the terminal.
@@ -76,7 +78,7 @@ It can send files back (e.g. `options.md`) as Telegram documents.
 
 ### Giving Claude more power (optional)
 
-To let Claude run shell commands unattended, add rules to `~/trips/.claude/settings.json`, e.g.
+To let Claude run shell commands unattended, add rules to `~/workspace/.claude/settings.json`, e.g.
 read-only checks:
 
 ```json

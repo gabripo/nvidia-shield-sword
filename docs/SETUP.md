@@ -62,7 +62,7 @@ Stages (each prints what it does):
 | `termux-bootstrap` | Opens Termux on the TV and **types one command into it** (watch the TV, don't touch the remote): pins the official package mirror, upgrades all packages, installs OpenSSH, adds your public key and starts `sshd`. Then waits for SSH. |
 | `termux` | Installs `proot-distro` and the Debian trixie container `debian`. |
 | `debian` | Installs tmux, Node.js, Claude Code, Bun; sets the time zone. |
-| `files` | Installs `~/.termux/boot/start-claude.sh`, the `~/.bashrc` autostart hook and `~/trips`. |
+| `files` | Installs `~/.termux/boot/start-claude.sh` and the `~/.bashrc` autostart hook. |
 
 If a stage fails, fix the cause and resume, e.g. `setup/install.sh --from debian`.
 
@@ -73,12 +73,12 @@ If a stage fails, fix the cause and resume, e.g. `setup/install.sh --from debian
 
 ```bash
 shield debian          # opens a Debian shell on the Shield
-cd ~/trips && claude
+mkdir -p ~/workspace && cd ~/workspace && claude
 ```
 
 1. Pick a theme, then **"Claude account with subscription"**.
 2. Claude Code shows a sign-in link: Cmd-click it, approve in the browser, paste the code back.
-3. Accept **"Yes, I trust this folder"** for `~/trips`.
+3. Accept **"Yes, I trust this folder"** for `~/workspace`.
 4. `/status` shows your account. Then `/exit`.
 
 Install the Telegram channel plugin (user scope, available in every folder):
