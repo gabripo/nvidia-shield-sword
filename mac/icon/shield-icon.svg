@@ -49,6 +49,12 @@
 
   <!-- terminal badge -->
   <rect x="560" y="640" width="270" height="190" rx="38" fill="#0d1014" stroke="#76b900" stroke-width="8"/>
-  <path d="M612 700 L668 735 L612 770" fill="none" stroke="#8fdc12" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
-  <line x1="690" y1="775" x2="770" y2="775" stroke="#8fdc12" stroke-width="18" stroke-linecap="round"/>
+  <path d="M600 700 L648 735 L600 770" fill="none" stroke="#8fdc12" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <g>
+    <polygon points="700,767 780,768 800,775 780,782 700,783" fill="#dfe5ea"/>
+    <line x1="704" y1="775" x2="776" y2="775" stroke="#6b7580" stroke-width="2"/>
+    <rect x="690" y="752" width="10" height="46" rx="4" fill="#8fdc12"/>
+    <rect x="668" y="769" width="22" height="12" rx="3" fill="#20262d" stroke="#8fdc12" stroke-width="3"/>
+    <circle cx="663" cy="775" r="8" fill="#8fdc12"/>
+  </g>
 </svg>
