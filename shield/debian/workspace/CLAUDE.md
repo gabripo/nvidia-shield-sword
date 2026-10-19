@@ -52,8 +52,9 @@ Rules for a command file:
 4. `chmod +x` it, then **test it** by running it, and show the owner the output.
 5. Secrets (passwords, API keys, device tokens) go in `/root/workspace/.secrets/<name>.env`
    (`chmod 600`), loaded by the command; never hard-code or print them.
-6. Install missing tools with `apt-get install -y <pkg>` (e.g. `openssh-client`, `curl`, `jq`)
-   and mention it.
+6. Install missing tools with `apt-get update && apt-get install -y <pkg>` (e.g. `openssh-client`,
+   `jq`; package lists are cleaned daily, so always update first) and mention it. Docs, man pages
+   and translations are not installed on purpose (saves space).
 7. For SSH to another machine: create a key (`ssh-keygen -t ed25519 -f ~/.ssh/<name> -N ""`) and
    give the owner the public key to authorize on that machine. Commands must be
    non-interactive (`ssh -o BatchMode=yes ...`).

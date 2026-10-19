@@ -28,13 +28,16 @@ gets you into the Shield over SSH with one click.
 - **Locked to you**: only allowlisted Telegram user IDs, private chats only.
 - **Self-starting**: opening Termux (or `shield` from the Mac, via adb) starts sshd and the bot;
   the bot restarts by itself after a crash.
+- **Fast but lean**: Claude and Chromium stay warm between requests (~2 s replies after the first)
+  and close when idle; docs-free Debian, native Claude Code, daily cleanup
+  ([docs/USAGE.md](docs/USAGE.md#ram-and-storage)).
 
 ## Example: searching flights from Telegram
 
 > **You:** Search flights from Zurich to Rome on 7 November, one way, and send me screenshots
 > and the link to book
 >
-> **Bot** (after ~1–3 min): a short list of the best options, e.g. *"8:15 → 9:50 easyJet,
+> **Bot** (after ~30–90 s): a short list of the best options, e.g. *"8:15 → 9:50 easyJet,
 > nonstop, €101 · 12:25 → 14:00 SWISS, nonstop, €177 · …"*, the Google Flights link to continue
 > booking, and the result pages as **photos**.
 

@@ -91,7 +91,9 @@ if want termux; then
 fi
 
 if want debian; then
-  step "Debian: Claude Code, tmux, Chromium"
+  step "Debian: Claude Code, tmux, Node.js, Chromium"
+  # Keep docs/man pages/translations out of every package install (saves ~200 MB).
+  remote 'proot-distro login debian -- bash -c "cat > /etc/dpkg/dpkg.cfg.d/01-shield-nodoc"' < "$REPO/shield/debian/dpkg-nodoc.cfg"
   remote "proot-distro login debian -- env SHIELD_TIMEZONE='$SHIELD_TIMEZONE' bash -s" < "$REPO/setup/debian-setup.sh"
 fi
 
@@ -106,8 +108,9 @@ if want files; then
   # --no-xattrs/--no-mac-metadata: GNU tar on the Shield warns about macOS extended attributes.
   COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -C "$REPO/shield/debian" -cf - workspace |
     remote 'proot-distro login debian -- tar -C /root --skip-old-files -xf -'
-  # Node dependencies of tools/browse (puppeteer-core, uses the system Chromium).
-  remote 'proot-distro login debian -- bash -lc "cd /root/workspace/tools && npm ci --no-fund --no-audit --silent"'
+  # Node dependencies of tools/browse (puppeteer-core, uses the system Chromium). npm is only
+  # needed for this step, so it is installed temporarily and removed again (~90 MB).
+  remote 'proot-distro login debian -- bash -lc "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq npm >/dev/null && cd /root/workspace/tools && npm ci --no-fund --no-audit --silent; apt-get purge -y -qq npm >/dev/null && apt-get autoremove -y -qq --purge >/dev/null; apt-get clean"'
 fi
 
 step "Done"

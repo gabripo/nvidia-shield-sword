@@ -7,7 +7,7 @@ What you need:
 - A Claude Pro or Max subscription (or an Anthropic API key)
 - Telegram on your phone
 
-About 3.5 GB of free storage on the Shield is needed (Termux, Debian, Node.js, Claude Code, Chromium).
+About 3 GB of free storage on the Shield is needed (Termux, Debian, Node.js, Claude Code, Chromium).
 
 ## 1. Enable network ADB on the Shield
 
@@ -61,7 +61,7 @@ Stages (each prints what it does):
 | `termux-app` | Downloads the latest Termux release from GitHub (arm64) and installs it with adb. Skipped if Termux is installed. |
 | `termux-bootstrap` | Opens Termux on the TV and **types one command into it** (watch the TV, don't touch the remote): pins the official package mirror, upgrades all packages, installs OpenSSH, adds your public key and starts `sshd`. Then waits for SSH. |
 | `termux` | Installs `proot-distro` and the Debian trixie container `debian`. |
-| `debian` | Installs tmux, Node.js and Claude Code; sets the time zone. |
+| `debian` | Installs tmux, Node.js, Chromium and Claude Code (native installer); removes docs/translations; sets the time zone. |
 | `files` | Installs the bot (`shield-bot.py`), `start-shield.sh`, `start-claude.sh`, the `~/.bashrc` autostart hook and the `~/workspace` template (existing files are kept). |
 
 If a stage fails, fix the cause and resume, e.g. `setup/install.sh --from debian`.

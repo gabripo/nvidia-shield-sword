@@ -46,8 +46,8 @@ From then on the bot starts whenever Termux starts (see [USAGE.md](USAGE.md)) an
 | `/termux <cmd>` | Run a command in Termux, e.g. `/termux pkg upgrade -y` |
 | `/commands` | List your custom commands |
 | `/logs` | Recent bot and start log lines |
-| `/new` | Start a new Claude conversation (Claude forgets earlier messages) |
-| `/cancel` | Stop the Claude request that is running |
+| `/new` | Start a new Claude conversation (Claude forgets earlier messages; the warm process restarts) |
+| `/cancel` | Stop the Claude request that is running (the next message resumes the conversation) |
 
 Shell commands time out after 120 s; long output is cut to its last ~3,500 characters (pipe
 through `tail` for long output).
@@ -57,6 +57,12 @@ through `tail` for long output).
 Plain messages go to Claude Code, running headless in Debian's `~/workspace` with your Claude
 subscription. Telegram shows "typing…" while Claude works; one request runs at a time (others
 are queued). The conversation continues across messages until you send `/new`.
+
+**Warm Claude.** The bot keeps one Claude process running between messages (Claude Code's
+streaming mode). The first message after a while takes ~15 s (Claude Code starting inside
+Debian), the following ones answer in ~2 s plus thinking time. After 15 idle minutes the process
+is closed to free its ~250 MB of RAM; the next message starts it again and resumes the
+conversation. Change the idle time with `"claude_idle": <seconds>` in the bot config.
 
 Claude's behaviour is defined by `~/workspace/CLAUDE.md` (installed from
 [`shield/debian/workspace`](../shield/debian/workspace)): short phone-friendly answers, never
@@ -83,8 +89,10 @@ tools/browse flights "Zurich to Rome on 2026-11-07 one way"     # Google Flights
 tools/browse shot https://example.com --pages 2                 # any page
 ```
 
-It opens the page, declines cookie banners (the privacy-preserving choice), waits for the
-content, takes screenshots (viewport by viewport, saved in `~/workspace/screenshots`, deleted
+It opens the page in a **warm Chromium** (started on first use, reused by later searches and
+closed after 10 idle minutes; `tools/browse stop` closes it at once), declines cookie banners
+(the privacy-preserving choice, remembered for later runs), waits for the content, takes
+screenshots (viewport by viewport, saved in `~/workspace/screenshots`, deleted
 after a day) and prints JSON with the final `url`, the `screenshots` and the visible `text`.
 Claude reads prices and times from the text, answers with a summary and the link, and adds a
 `SEND_FILE:` line per screenshot; the bot sends images as **photos**.
@@ -96,7 +104,7 @@ Send the bot:
 > Search flights from Zurich to Rome on 7 November, one way, and send me screenshots and the
 > link to book
 
-After about 1–3 minutes ("typing…" meanwhile) you get:
+After about 30–90 seconds ("typing…" meanwhile; the first message after a pause adds ~15 s) you get:
 
 1. a short summary of the best options (times, airline, stops, price, e.g. *"8:15 → 9:50
    easyJet, nonstop, €101"*), notes such as "prices are currently high",
@@ -109,8 +117,8 @@ Follow-ups continue the same conversation: *"what about returning on 10 November
 Notes:
 
 - Claude never logs in, enters passenger data, or presses Book/Pay.
-- The Shield has ~1.4 GB of free RAM; with Claude running too, a browser run takes 20–60 s and
-  occasionally a second screenshot is skipped (the text and link are always returned).
+- A search takes ~15 s of browsing (plus Claude's thinking); with little free RAM a second
+  screenshot is occasionally skipped (the text and link are always returned).
 - Heavier sites may be slower or fail; Claude then tells you and still gives you links.
 
 ## Your own commands

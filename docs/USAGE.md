@@ -71,13 +71,37 @@ message and `shield-bot.err` the bot's errors.
 | Debian `/root/workspace/` | Claude's workspace: `CLAUDE.md`, `.claude/settings.json`, `commands/` (your bot commands), `tools/browse` (headless browser), `screenshots/` (kept one day) |
 | Debian `/root/.claude/` | Claude sign-in and conversations |
 
+## RAM and storage
+
+The Shield has ~3 GB of RAM (Android and your apps use about 1.8 GB) and limited storage, so the
+setup is tuned to use resources only while something happens:
+
+| Component | Idle | While working | Tuning |
+|---|---|---|---|
+| shield-bot (Termux) | ~30 MB | same | - |
+| Claude (warm process) | 0 (closed after 15 min) | ~250 MB | `claude_idle` in `~/.config/shield-bot/config.json` |
+| Chromium (warm browser) | 0 (closed after 10 min) | ~300–500 MB | `IDLE_SECONDS` in `tools/browse.js`; `tools/browse stop` |
+
+Storage savings built in: no docs, man pages or translations in Debian
+(`/etc/dpkg/dpkg.cfg.d/01-shield-nodoc`), Claude Code as a native binary (no npm), npm only
+installed temporarily during setup, and a **daily cleanup** by the bot (apt caches and package
+lists, Claude transcripts older than 30 days, screenshots older than a day; logged as "daily
+cleanup done, freed N MB").
+
+Biggest remaining items: Chromium with its graphics libraries (~560 MB), Claude Code (~270 MB),
+and Termux's compiler toolchain (~300 MB, required by `proot-distro`). Other Android apps running
+in the background (VPNs, media servers) compete for the same RAM.
+
 ## Updating
 
 ```bash
 shield debian
-npm install -g @anthropic-ai/claude-code      # Claude Code
+claude update                                 # Claude Code (also updates itself)
 apt update && apt upgrade                     # Debian
 ```
+
+To reinstall the browse tool's dependencies (e.g. after deleting `node_modules`):
+`apt update && apt install -y npm && cd ~/workspace/tools && npm ci; apt purge -y npm && apt autoremove -y`.
 
 In Termux (`shield termux`): `pkg upgrade`. If that upgrades `openssh`, the running `sshd`
 starts refusing new connections: restart it from the Termux app on the TV with

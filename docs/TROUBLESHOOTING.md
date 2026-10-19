@@ -57,6 +57,17 @@ Debian defaults to UTC. Set `SHIELD_TIMEZONE` in your config and re-run
 `setup/install.sh --from debian`, or inside Debian:
 `ln -sf /usr/share/zoneinfo/Europe/Zurich /etc/localtime`.
 
+### `apt-get install` says "Unable to locate package"
+
+The bot's daily cleanup deletes apt's package lists to save space. Run `apt-get update` first
+(Claude is told to do so).
+
+### Low memory / slow replies
+
+`/status` shows free RAM. Claude and Chromium only use memory while warm (15 and 10 minutes
+after their last use). Other Android apps running in the background also compete for RAM;
+close or restrict the ones you don't need on the TV. See [USAGE.md](USAGE.md#ram-and-storage).
+
 ### A reply hangs
 
 `kill -USR1 $(pgrep -f "shield-bot.py --run")` in Termux writes every thread's stack to

@@ -106,6 +106,7 @@ def load_config():
     cfg.setdefault("shell_timeout", 120)
     cfg.setdefault("command_timeout", 120)
     cfg.setdefault("claude_timeout", 900)
+    cfg.setdefault("claude_idle", 900)          # close the warm Claude process after 15 idle minutes
     cfg["allowed_user_ids"] = [int(x) for x in cfg.get("allowed_user_ids", [])]
     return cfg
 
@@ -206,7 +207,8 @@ def b_commands(_a, _c):
 def b_status(_a, _c):
     lines = ["sshd:    " + ("running" if termux("pgrep -x sshd")[0] == 0 else "not running")]
     sess = debian("tmux has-session -t claude 2>/dev/null")[0] == 0
-    lines.append("Claude:  " + ("busy with a request" if CLAUDE.busy() else "idle")
+    lines.append("Claude:  " + ("busy with a request" if CLAUDE.busy() else
+                                ("idle, warm (fast replies)" if CLAUDE.warm() else "idle, not loaded"))
                  + (" · interactive session open" if sess else ""))
     lines.append("Uptime:  " + termux("uptime -p 2>/dev/null || uptime")[1].strip())
     lines.append("Memory:  " + termux(
@@ -233,6 +235,7 @@ def b_logs(_a, _c):
 
 
 def b_new(_a, _c):
+    CLAUDE.stop("new conversation")
     st = load_json(STATE_PATH, {})
     st.pop("claude_session_id", None)
     save_json(STATE_PATH, st)
@@ -265,99 +268,197 @@ def handle_command(text, cfg):
 # ------------------------------------------------------------------ Claude
 
 class ClaudeWorker:
-    """Runs one Claude request at a time in a background thread."""
+    """Keeps ONE Claude Code process running between messages ("warm Claude").
+
+    Claude runs in streaming mode (stream-json in/out): the first message pays the
+    ~15 s startup, later ones answer in seconds and continue the same conversation.
+    The process is closed after `claude_idle` seconds without requests (default 900)
+    to give the RAM back, and restarted on demand with --resume. One request at a time.
+    """
 
     def __init__(self):
         self.q = queue.Queue()
         self.proc = None
+        self.events = None          # queue of parsed stdout messages (None = process ended)
         self.lock = threading.Lock()
+        self.working = False
+        self.cancelled = False
+        self.last_used = 0.0
 
     def busy(self):
-        return self.proc is not None
+        return self.working
+
+    def warm(self):
+        return self.proc is not None and self.proc.poll() is None
 
     def submit(self, bot, chat_id, prompt, cfg):
-        ahead = self.q.qsize() + (1 if self.busy() else 0)
+        ahead = self.q.qsize() + (1 if self.working else 0)
         self.q.put((bot, chat_id, prompt, cfg))
         return ahead
 
-    def cancel(self):
+    # -- process management
+    def _start(self, cfg):
+        sid = load_json(STATE_PATH, {}).get("claude_session_id")
+        cmd = (f"mkdir -p {WORKSPACE} && cd {WORKSPACE} && exec claude -p --input-format stream-json "
+               "--output-format stream-json --verbose --permission-mode dontAsk")
+        if sid:
+            cmd += f" --resume {shlex.quote(sid)}"
+        proc = subprocess.Popen(debian_argv(cmd), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True, bufsize=1, start_new_session=True)
+        events = queue.Queue()
+        stderr_tail = []
+
+        def read_stdout():
+            for line in proc.stdout:
+                try:
+                    events.put(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+            events.put(None)
+
+        def read_stderr():
+            for line in proc.stderr:
+                stderr_tail.append(line)
+                del stderr_tail[:-20]
+
+        threading.Thread(target=read_stdout, daemon=True).start()
+        threading.Thread(target=read_stderr, daemon=True).start()
+        proc.stderr_tail = stderr_tail
+        proc.resumed = bool(sid)            # first answer of a resumed session gets a sanity check
+        self.proc, self.events = proc, events
+        log(f"Claude process started (pid {proc.pid}{', resuming' if sid else ''})")
+
+    def stop(self, reason=""):
         with self.lock:
-            p = self.proc
-        if not p:
+            p, self.proc = self.proc, None
+        if p and p.poll() is None:
+            try:
+                os.killpg(p.pid, signal.SIGTERM)
+            except OSError:
+                p.terminate()
+            log(f"Claude process stopped{': ' + reason if reason else ''}")
+
+    def cancel(self):
+        if not self.working:
             return False
-        try:
-            os.killpg(p.pid, signal.SIGTERM)
-        except OSError:
-            p.terminate()
+        self.cancelled = True
+        self.stop("cancelled")
         return True
 
-    def loop(self):
+    def reap_idle(self, idle_seconds):
+        """Background thread: close the warm process when it hasn't been used for a while."""
+        while True:
+            time.sleep(60)
+            if self.warm() and not self.working and time.time() - self.last_used > idle_seconds:
+                self.stop(f"idle for {idle_seconds // 60} min")
+
+    def loop(self, cfg):
+        threading.Thread(target=self.reap_idle, args=(cfg["claude_idle"],), daemon=True).start()
         while True:
             bot, chat_id, prompt, cfg = self.q.get()
+            self.working, self.cancelled = True, False
             try:
                 self.ask(bot, chat_id, prompt, cfg)
             except Exception as e:
                 log(f"claude error: {e!r}")
                 bot.send(chat_id, f"Claude failed: {html.escape(repr(e))}")
+            finally:
+                self.working = False
+                self.last_used = time.time()
 
-    def ask(self, bot, chat_id, prompt, cfg, retry=True):
-        st = load_json(STATE_PATH, {})
-        sid = st.get("claude_session_id")
-        cmd = f"mkdir -p {WORKSPACE} && cd {WORKSPACE} && claude -p --output-format json --permission-mode dontAsk"
-        if sid:
-            cmd += f" --resume {shlex.quote(sid)}"
-        with self.lock:
-            self.proc = subprocess.Popen(debian_argv(cmd), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                         stderr=subprocess.PIPE, text=True, start_new_session=True)
-        proc = self.proc
-        result = {}
-        done = threading.Event()
-
-        def communicate():
-            try:
-                result["out"], result["err"] = proc.communicate(prompt, timeout=cfg["claude_timeout"])
-            except subprocess.TimeoutExpired:
-                os.killpg(proc.pid, signal.SIGTERM)
-                result["out"], result["err"] = proc.communicate()
-                result["timeout"] = True
-            done.set()
-
-        threading.Thread(target=communicate, daemon=True).start()
-        while not done.wait(5):
-            bot.action(chat_id)
-        with self.lock:
-            self.proc = None
-
-        if result.get("timeout"):
-            bot.send(chat_id, f"Claude took longer than {cfg['claude_timeout']} s and was stopped.")
-            return
-        if proc.returncode in (-signal.SIGTERM, 143) and not result.get("out"):
-            return  # cancelled; /cancel already replied
+    # -- one request
+    def ask(self, bot, chat_id, prompt, cfg, retry=True, note=""):
+        if not self.warm():
+            self._start(cfg)
+        proc, events = self.proc, self.events
         try:
-            data = json.loads(result["out"])
-        except (json.JSONDecodeError, TypeError):
-            err = (result.get("err") or result.get("out") or "").strip()
-            if sid and retry and ("session" in err.lower() or "resume" in err.lower()):
+            proc.stdin.write(json.dumps({"type": "user", "message": {"role": "user", "content": prompt}}) + "\n")
+            proc.stdin.flush()
+        except (BrokenPipeError, OSError):
+            self.stop("stdin closed")
+            if retry:
+                return self.ask(bot, chat_id, prompt, cfg, retry=False)
+            raise
+        deadline = time.time() + cfg["claude_timeout"]
+        result = None
+        while result is None:
+            if time.time() > deadline:
+                self.stop("timeout")
+                bot.send(chat_id, f"Claude took longer than {cfg['claude_timeout']} s and was stopped.")
+                return
+            try:
+                msg = events.get(timeout=5)
+            except queue.Empty:
+                bot.action(chat_id)
+                continue
+            if msg is None:                                    # process ended
+                if self.cancelled:
+                    return                                     # /cancel already replied
+                err = "".join(getattr(proc, "stderr_tail", [])).strip()
+                self.stop("exited")
+                st = load_json(STATE_PATH, {})
+                if retry and st.get("claude_session_id") and ("session" in err.lower() or "resume" in err.lower()):
+                    st.pop("claude_session_id", None)          # stale session id: start fresh
+                    save_json(STATE_PATH, st)
+                    return self.ask(bot, chat_id, prompt, cfg, retry=False)
+                bot.send(chat_id, pre(err[-1500:] or f"exit {proc.returncode}", "Claude stopped unexpectedly"))
+                return
+            if msg.get("type") == "result":
+                result = msg
+        if getattr(proc, "resumed", False):
+            proc.resumed = False
+            if retry and (result.get("is_error") or not (result.get("result") or "").strip()):
+                # A conversation interrupted mid-task (e.g. by /cancel) can't always be resumed:
+                # start a new one and ask again.
+                log(f"resumed session gave an empty/error result ({result.get('subtype')}); starting fresh")
+                self.stop("resume failed")
+                st = load_json(STATE_PATH, {})
                 st.pop("claude_session_id", None)
                 save_json(STATE_PATH, st)
-                return self.ask(bot, chat_id, prompt, cfg, retry=False)
-            bot.send(chat_id, pre(err[-1500:] or f"exit {proc.returncode}", "Claude failed"))
-            return
-        if data.get("session_id"):
-            st["claude_session_id"] = data["session_id"]
+                return self.ask(bot, chat_id, "(The previous conversation was interrupted.) " + prompt, cfg,
+                                retry=False, note="(Started a new conversation: the previous one was interrupted.)\n\n")
+        if result.get("session_id"):
+            st = load_json(STATE_PATH, {})
+            st["claude_session_id"] = result["session_id"]
             save_json(STATE_PATH, st)
-        text = (data.get("result") or "").strip() or "(Claude returned no text)"
+        text = (result.get("result") or "").strip() or "(Claude returned no text)"
         files = re.findall(r"^SEND_FILE:\s*(\S+)\s*$", text, re.M)
         text = re.sub(r"^SEND_FILE:\s*\S+\s*$\n?", "", text, flags=re.M).strip()
-        if data.get("is_error"):
+        if result.get("is_error"):
             text = "⚠️ " + text
-        bot.send_plain(chat_id, text or "(file attached)")
+        bot.send_plain(chat_id, note + (text or "(file attached)"))
         for path in files:
             bot.send_file(chat_id, path)
-        log(f"Claude replied ({len(text)} chars, {len(files)} file(s), {data.get('num_turns', '?')} turns)")
+        log(f"Claude replied ({len(text)} chars, {len(files)} file(s), {result.get('num_turns', '?')} turns, "
+            f"{result.get('subtype', '?')})")
 
 
 CLAUDE = ClaudeWorker()
+
+
+# ------------------------------------------------------------------ maintenance
+
+CLEANUP_DEBIAN = ("apt-get clean; rm -rf /var/lib/apt/lists/*; "
+                  "find /root/.claude/projects -name '*.jsonl' -mtime +30 -delete 2>/dev/null; "
+                  f"find {WORKSPACE}/screenshots -type f -mtime +1 -delete 2>/dev/null; true")
+CLEANUP_TERMUX = "apt-get clean 2>/dev/null; true"
+
+
+def maintenance():
+    """Daily cleanup (10 min after start, then every 24 h): apt caches and package lists,
+    Claude transcripts older than 30 days, screenshots older than a day."""
+    time.sleep(600)
+    while True:
+        if not CLAUDE.busy():
+            before = termux("df -k $HOME | awk 'NR==2 {print $4}'")[1].strip()
+            debian(CLEANUP_DEBIAN, timeout=300)
+            termux(CLEANUP_TERMUX, timeout=120)
+            after = termux("df -k $HOME | awk 'NR==2 {print $4}'")[1].strip()
+            try:
+                log(f"daily cleanup done, freed {(int(after) - int(before)) // 1024} MB")
+            except ValueError:
+                log("daily cleanup done")
+        time.sleep(24 * 3600)
 
 
 # ------------------------------------------------------------------ Telegram
@@ -456,7 +557,8 @@ def run_bot():
     bot = Bot(cfg["token"])
     me = bot.call("getMe")
     log(f"started as @{me['username']}, allowed users {cfg['allowed_user_ids']}")
-    threading.Thread(target=CLAUDE.loop, daemon=True).start()
+    threading.Thread(target=CLAUDE.loop, args=(cfg,), daemon=True).start()
+    threading.Thread(target=maintenance, daemon=True).start()
     menu = user_commands()
     bot.set_commands(menu)
     # Drop messages sent while the bot was offline: never replay old commands.
