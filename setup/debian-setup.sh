@@ -34,5 +34,8 @@ if [ ! -x "$HOME/.bun/bin/bun" ]; then
 fi
 echo "    bun $("$HOME/.bun/bin/bun" --version)"
 
+# Claude Code asks for focus events (it uses them to track whether its window is active).
+grep -qs 'focus-events on' "$HOME/.tmux.conf" || echo 'set -g focus-events on' >> "$HOME/.tmux.conf"
+
 mkdir -p "$HOME/workspace"
 echo "==> Debian setup done"
