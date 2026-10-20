@@ -240,6 +240,17 @@ def menu_shortcuts():
     return out
 
 
+def menu_hidden():
+    """User commands with "# menu-hide: yes" in their first lines: usable when typed, but not
+    listed in Telegram's menu (e.g. when their shortcuts cover everything)."""
+    hidden = set()
+    for name in user_commands():
+        for line in _header(os.path.join(ROOTFS + COMMANDS_DIR, name)):
+            if re.match(r"^\s*(?:#|//|--)\s*menu-hide:\s*(yes|true|1)\b", line, re.I):
+                hidden.add(name)
+    return hidden
+
+
 def run_user_command(name, arg, cfg):
     try:
         args = shlex.split(arg)
@@ -622,15 +633,22 @@ class Bot:
         if not res.get("ok"):
             raise RuntimeError(f"{method}: {res.get('description')}")
 
-    def set_commands(self, cmds, shortcuts=()):
-        """Telegram's command menu: built-ins, then each user command with its shortcuts."""
+    def set_commands(self, cmds, shortcuts=(), hidden=()):
+        """Telegram's command menu: built-ins, then each user command with its shortcuts.
+
+        Set for the default scope AND for all private chats: Telegram prefers the more specific
+        scope, so a list left there by another program (e.g. Claude Code's Telegram channel
+        plugin sets /start /help /status) would otherwise hide ours.
+        """
         menu = [{"command": n, "description": d[:250]} for n, d in BUILTINS.items()]
         for n, d in cmds.items():
-            menu.append({"command": n, "description": d[:250]})
+            if n not in hidden:
+                menu.append({"command": n, "description": d[:250]})
             menu += [{"command": sc, "description": desc[:250]} for sc, base, _a, desc in shortcuts if base == n]
         if len(menu) > 100:
             log(f"command menu has {len(menu)} entries; Telegram shows the first 100")
-        self.call("setMyCommands", commands=menu[:100])
+        for scope in ({"type": "default"}, {"type": "all_private_chats"}):
+            self.call("setMyCommands", commands=menu[:100], scope=scope)
 
 
 def run_bot():
@@ -643,7 +661,7 @@ def run_bot():
     log(f"started as @{me['username']}, allowed users {cfg['allowed_user_ids']}")
     threading.Thread(target=CLAUDE.loop, args=(cfg,), daemon=True).start()
     threading.Thread(target=maintenance, daemon=True).start()
-    menu = (user_commands(), menu_shortcuts())
+    menu = (user_commands(), menu_shortcuts(), menu_hidden())
     bot.set_commands(*menu)
     # Drop messages sent while the bot was offline: never replay old commands.
     pending = bot.call("getUpdates", offset=-1, timeout=0)
@@ -669,7 +687,7 @@ def run_bot():
             time.sleep(backoff)
             backoff = min(backoff * 2, 300)
             continue
-        current = (user_commands(), menu_shortcuts())
+        current = (user_commands(), menu_shortcuts(), menu_hidden())
         if current != menu:                      # Claude (or you) changed commands or their shortcuts
             menu = current
             try:

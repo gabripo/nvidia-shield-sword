@@ -2,6 +2,7 @@
 # description: Smart plugs - /plug [name|number] [on|off|toggle|cycle [seconds]|status]
 # menu: dynamic
 # menu-depends: .secrets/plugs.conf
+# menu-hide: yes
 """Bot command for Shelly smart plugs (Gen2/Gen3/Gen4 local RPC API, no cloud).
 
   /plug                      status of all plugs

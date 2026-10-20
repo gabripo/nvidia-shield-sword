@@ -41,7 +41,8 @@ With a single plug configured, the name can be left out (`/plug cycle`).
 
 Every plug also gets **one-tap entries in Telegram's command menu**, generated from
 `plugs.conf`: `/plug_pc` (status), `/plug_pc_on`, `/plug_pc_off`, `/plug_pc_toggle`,
-`/plug_pc_cycle`. Add a plug and its entries appear within a minute.
+`/plug_pc_cycle`. Add a plug and its entries appear within a minute. The bare `/plug` is not
+listed in the menu (`# menu-hide: yes`) but still works when typed.
 
 ### Turning a PC on with `cycle`
 
