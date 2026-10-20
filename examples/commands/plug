@@ -20,6 +20,8 @@ Plugs are configured in /root/workspace/.secrets/plugs.conf (chmod 600), one per
   1         pc     192.168.1.50    60
   2         lamp   192.168.1.51
 
+"cycle-start" (for other commands, e.g. pcctl) only starts the cycle and returns at once.
+
 "cycle" uses the plug's own timer (Switch.Set with toggle_after), so the off time is exact
 even if the network is slow. Default 60 s: a PC set to "power on after AC loss" needs the
 power off long enough for its supply to drain (30 s was not enough on an ASRock B850M).
@@ -31,7 +33,7 @@ import urllib.error
 import urllib.request
 
 CONF = "/root/workspace/.secrets/plugs.conf"
-ACTIONS = ("on", "off", "toggle", "cycle", "status", "list")
+ACTIONS = ("on", "off", "toggle", "cycle", "cycle-start", "status", "list")
 DEFAULT_CYCLE = 60          # long enough for a PC's power supply to register a real power loss
 
 
@@ -146,6 +148,10 @@ def main():
             rpc(plug, "Switch.Toggle", id=0)
             time.sleep(1)
             print(describe(plug, rpc(plug, "Switch.GetStatus", id=0)))
+        elif action == "cycle-start":                     # don't wait: the plug's timer does the rest
+            n = max(3, plug["cycle"])
+            rpc(plug, "Switch.Set", id=0, on=False, toggle_after=n)
+            print(f"{plug['num']} {plug['name']}: OFF, back on in {n} s (plug timer)")
         elif action == "cycle":
             n = max(3, min(plug["cycle"], 100))   # the bot stops commands after 120 s
             # The plug switches off now and back on by itself after n seconds.

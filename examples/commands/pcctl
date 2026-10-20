@@ -23,9 +23,11 @@ Configuration in /root/workspace/.secrets/pc.conf (chmod 600), KEY=value lines:
   key=/root/.ssh/pc_bazzite    # private key of the Shield (ssh-keygen -t ed25519)
   plug=pc                      # plug name in plugs.conf, used by /pc_on (commands/plug)
 
-/pc_on only power-cycles the plug when the PC is off: cutting power to a running PC is never
-done here.
+/pc_on only power-cycles the plug when the PC is off: not reachable over SSH *and* drawing
+less than ON_WATTS on the plug (a PC still shutting down closes SSH early). It replies at once;
+the plug's own timer switches power back on.
 """
+import re
 import socket
 import subprocess
 import sys
@@ -33,6 +35,7 @@ import time
 
 CONF = "/root/workspace/.secrets/pc.conf"
 ACTIONS = ("status", "on", "shutdown", "reboot", "sunshine-restart", "gamemode", "desktop")
+ON_WATTS = 10        # above this the PC is running, starting or shutting down
 
 
 def load_conf():
@@ -85,6 +88,23 @@ def plug(conf, action):
     return (r.stdout + r.stderr).strip()
 
 
+def watts(conf):
+    """(power draw in W or None, plug status line)."""
+    line = plug(conf, "status")
+    m = re.search(r"([\d.]+) W", line)
+    return (float(m.group(1)) if m else None), line
+
+
+def wait_watts_below(conf, limit, seconds):
+    end = time.time() + seconds
+    while time.time() < end:
+        w, line = watts(conf)
+        if w is not None and w < limit:
+            return line
+        time.sleep(5)
+    return None
+
+
 def main():
     conf = load_conf()
     action = (sys.argv[1] if len(sys.argv) > 1 else "status").lower()
@@ -95,10 +115,13 @@ def main():
         if up(conf):
             print("The PC is already on.\n" + remote(conf, "status"))
             return
-        print(plug(conf, "cycle"), flush=True)
-        # ~70 s went into the power cycle; the bot stops commands after 120 s.
-        print("PC is up:\n" + remote(conf, "status") if wait(conf, True, 40)
-              else "The PC is booting - check with /pc in a minute.")
+        w, line = watts(conf)
+        if w is not None and w >= ON_WATTS:
+            print(f"Not cutting power: the PC draws {w:.0f} W, so it's still running, starting or "
+                  "shutting down. Check again with /pc in a minute.\nPlug: " + line)
+            return
+        print(plug(conf, "cycle-start"))
+        print("The PC boots right after power returns: check with /pc in about 2 minutes.")
         return
 
     if not up(conf):
@@ -111,19 +134,16 @@ def main():
         print(remote(conf, "status"))
     elif action == "shutdown":
         print(remote(conf, "shutdown"), flush=True)
-        if wait(conf, False, 60):
-            time.sleep(5)
-            print("PC is off. Plug: " + plug(conf, "status"))
-        else:
-            print("The PC is still reachable after 60 s - check /pc (an app may be blocking shutdown).")
+        if not wait(conf, False, 30):
+            print("The PC is still reachable after 30 s - check /pc (an app may be blocking shutdown).")
+            return
+        line = wait_watts_below(conf, ON_WATTS, 80)    # SSH closes early; power draw tells when it's off
+        print("PC is off. Plug: " + line if line else
+              "SSH is down but the PC still draws power - check with /pc in a minute.")
     elif action == "reboot":
         print(remote(conf, "reboot"), flush=True)
-        if not wait(conf, False, 40):
-            print("The PC didn't go down within 40 s - check /pc.")
-        elif wait(conf, True, 70):
-            print("PC is back:\n" + remote(conf, "status"))
-        else:
-            print("The PC is restarting - check with /pc in a minute.")
+        print("The PC is restarting - check with /pc in a minute or two." if wait(conf, False, 40)
+              else "The PC didn't go down within 40 s - check /pc.")
     else:
         print(remote(conf, action))
 
