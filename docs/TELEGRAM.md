@@ -62,7 +62,9 @@ Plain messages go to Claude Code, running headless in Debian's `~/workspace` wit
 subscription. Telegram shows "typing…" while Claude works; one request runs at a time (others
 are queued). The conversation continues across messages until you end it.
 
-When a conversation starts, the bot posts **💬 New Claude conversation** with three buttons:
+When a conversation starts, the bot posts **💬 New Claude conversation** (or *Continuing your
+earlier Claude conversation* after a pause or restart), and every Claude reply carries the same
+three buttons:
 
 - **⏹ Cancel request**: stops the request that is running (`/cancel`)
 - **🆕 End conversation**: Claude forgets it; the next message starts a new one (`/new`)

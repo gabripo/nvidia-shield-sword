@@ -542,6 +542,9 @@ class ClaudeWorker:
                         "\nFollow-up messages continue it until you end it." if memory_on() else
                         "\nMemory is off: each message is answered on its own."),
                         conversation_buttons())
+                elif not self.warm():                    # after a pause or a restart
+                    bot.send(chat_id, "💬 <b>Continuing your earlier Claude conversation</b>"
+                             "\nEnd it to start fresh.", conversation_buttons())
                 self.ask(bot, chat_id, prompt, cfg)
             except Exception as e:
                 log(f"claude error: {e!r}")
@@ -618,7 +621,7 @@ class ClaudeWorker:
         text = re.sub(r"^SEND_FILE:\s*\S+\s*$\n?", "", text, flags=re.M).strip()
         if result.get("is_error"):
             text = "⚠️ " + text
-        bot.send_plain(chat_id, note + (text or "(file attached)"))
+        bot.send_plain(chat_id, note + (text or "(file attached)"), conversation_buttons())
         for path in files:
             bot.send_file(chat_id, path)
         log(f"Claude replied ({len(text)} chars, {len(files)} file(s), {result.get('num_turns', '?')} turns, "
@@ -703,10 +706,13 @@ class Bot:
             log(f"sendMessage(HTML) failed: {e!r}")
             self.send_plain(chat_id, re.sub(r"<[^>]+>", "", html.unescape(text_html)))
 
-    def send_plain(self, chat_id, text):
-        for i in range(0, max(len(text), 1), MAX_MSG):
+    def send_plain(self, chat_id, text, buttons=()):
+        chunks = range(0, max(len(text), 1), MAX_MSG)
+        for i in chunks:
+            last = i == chunks[-1]                       # buttons go under the last part
             self.call_retry("sendMessage", chat_id=chat_id, text=text[i:i + MAX_MSG],
-                            disable_web_page_preview="true")
+                            disable_web_page_preview="true",
+                            **({"reply_markup": keyboard(buttons)} if buttons and last else {}))
 
     def send_file(self, chat_id, debian_path):
         if not debian_path.startswith("/"):
