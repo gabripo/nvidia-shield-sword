@@ -66,12 +66,20 @@ Rules for a command file:
        # menu: ar4k_status status | Gaming PC: is it up?
        # menu: ar4k_shutdown shutdown | Gaming PC: shut down
 
-   Shortcut names follow the same rules as command names. If the shortcuts depend on a config
+   A `# shortcut:` line declares the same kind of shortcut but keeps it out of the menu (it
+   still works when typed or tapped as a button). Shortcut names follow the same rules as
+   command names. If the shortcuts depend on a config
    file (one set per device, like `commands/plug`), use `# menu: dynamic` plus
    `# menu-depends: <file>` and make `<command> --menu` print `shortcut<TAB>args<TAB>description`
    lines. The menu holds at most 100 entries in total, so add only shortcuts the owner will use.
    The owner prefers commands without spaces: when every action has a shortcut, also add
    `# shortcuts-only: yes` so only the underscore commands exist (like `commands/plug`).
+
+10. **Buttons.** For a command with several actions, prefer one menu entry that answers with
+    buttons: print one line per button, `BUTTON: /<command or shortcut> | <label>`, adding
+    `| confirm` for anything disruptive (shutdown, reboot, deleting); the bot asks "are you
+    sure?" first. Make the buttons fit the current state (e.g. "Turn on" only when it's off),
+    point them to `# shortcut:` entries, and see `commands/pcctl` for an example.
 
 When the owner asks to delete a command, remove its file and its README line.
 

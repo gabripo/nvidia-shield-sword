@@ -190,6 +190,8 @@ def menu_shortcuts():
 
     In a command's first lines:
       # menu: <shortcut> <args...> | <description>    a static shortcut (repeatable)
+      # shortcut: <shortcut> <args...> | <description>  the same, but not listed in the menu
+                                                      (e.g. reached through buttons)
       # menu: dynamic                                 run `<command> --menu` for the list
       # menu-depends: <path>                          re-run --menu when that file changes
     `--menu` prints one shortcut per line: shortcut<TAB>args<TAB>description.
@@ -202,7 +204,7 @@ def menu_shortcuts():
         head = _header(path)
         entries, dynamic, depends = [], False, []
         for line in head:
-            m = re.match(r"^\s*(?:#|//|--)\s*menu:\s*(.+)$", line, re.I)
+            m = re.match(r"^\s*(?:#|//|--)\s*(?:menu|shortcut):\s*(.+)$", line, re.I)
             if m:
                 spec = m.group(1).strip()
                 if spec.lower() == "dynamic":
@@ -256,10 +258,29 @@ def shortcuts_only():
     return _flagged("shortcuts-only")
 
 
+def hidden_shortcuts():
+    """Shortcuts declared with "# shortcut:" (usable, not listed in Telegram's menu)."""
+    found = set()
+    for name in user_commands():
+        for line in _header(os.path.join(ROOTFS + COMMANDS_DIR, name)):
+            m = re.match(r"^\s*(?:#|//|--)\s*shortcut:\s*(\S+)", line, re.I)
+            if m:
+                found.add(m.group(1).lower())
+    return found
+
+
 def menu_hidden():
-    """Commands not listed in Telegram's menu: "# menu-hide: yes" (still usable when typed)
-    plus all shortcuts-only commands."""
-    return _flagged("menu-hide") | shortcuts_only()
+    """Commands and shortcuts not listed in Telegram's menu: "# menu-hide: yes" (still usable
+    when typed), all shortcuts-only commands, and "# shortcut:" entries."""
+    return _flagged("menu-hide") | shortcuts_only() | hidden_shortcuts()
+
+
+class Reply(str):
+    """Reply HTML that may carry inline buttons: [(label, callback_data)]."""
+    buttons = ()
+
+
+BUTTON_RE = re.compile(r"^BUTTON:\s*(/[a-z0-9_]{1,32})\s*\|\s*([^|\n]+?)\s*(\|\s*confirm\s*)?$", re.M | re.I)
 
 
 def run_user_command(name, arg, cfg, label=None):
@@ -269,7 +290,14 @@ def run_user_command(name, arg, cfg, label=None):
         args = [arg] if arg else []
     cmd = f"cd {WORKSPACE} && ./commands/{name} " + " ".join(shlex.quote(a) for a in args)
     code, out = debian(cmd, timeout=cfg["command_timeout"])
-    return pre(out, (label or f"/{name}" + (f" {arg}" if arg else "")) + f" - exit {code}")
+    # "BUTTON: /command | Label [| confirm]" lines become buttons under the reply; "confirm"
+    # asks "are you sure?" before running (for shutdowns and the like).
+    buttons = [(m.group(2), ("?" if m.group(3) else "") + m.group(1).lower())
+               for m in BUTTON_RE.finditer(out)]
+    reply = Reply(pre(BUTTON_RE.sub("", out).strip(),
+                      (label or f"/{name}" + (f" {arg}" if arg else "")) + f" - exit {code}"))
+    reply.buttons = buttons
+    return reply
 
 
 # ------------------------------------------------------------------ built-ins
@@ -574,6 +602,13 @@ def maintenance():
 
 # ------------------------------------------------------------------ Telegram
 
+def keyboard(buttons, per_row=2):
+    """Telegram inline keyboard from [(label, callback_data)]."""
+    rows = [[{"text": t[:60], "callback_data": d[:64]} for t, d in buttons[i:i + per_row]]
+            for i in range(0, len(buttons), per_row)]
+    return {"inline_keyboard": rows}
+
+
 class Bot:
     def __init__(self, token):
         self.base = f"https://api.telegram.org/bot{token}/"
@@ -606,10 +641,11 @@ class Bot:
         except Exception:
             pass
 
-    def send(self, chat_id, text_html):
+    def send(self, chat_id, text_html, buttons=()):
+        extra = {"reply_markup": keyboard(buttons)} if buttons else {}
         try:
             self.call_retry("sendMessage", chat_id=chat_id, text=text_html, parse_mode="HTML",
-                            disable_web_page_preview="true")
+                            disable_web_page_preview="true", **extra)
         except Exception as e:
             log(f"sendMessage(HTML) failed: {e!r}")
             self.send_plain(chat_id, re.sub(r"<[^>]+>", "", html.unescape(text_html)))
@@ -665,7 +701,8 @@ class Bot:
         for n, d in cmds.items():
             if n not in hidden:
                 menu.append({"command": n, "description": d[:250]})
-            menu += [{"command": sc, "description": desc[:250]} for sc, base, _a, desc in shortcuts if base == n]
+            menu += [{"command": sc, "description": desc[:250]}
+                     for sc, base, _a, desc in shortcuts if base == n and sc not in hidden]
         if len(menu) > 100:
             log(f"command menu has {len(menu)} entries; Telegram shows the first 100")
         for scope in ({"type": "default"}, {"type": "all_private_chats"}):
@@ -690,7 +727,7 @@ def run_bot():
     backoff = 5
     while True:
         try:
-            updates = bot.call("getUpdates", offset=offset, timeout=50, allowed_updates=["message"])
+            updates = bot.call("getUpdates", offset=offset, timeout=50, allowed_updates=["message", "callback_query"])
             backoff = 5
         except urllib.error.HTTPError as e:
             if e.code == 409:
@@ -717,6 +754,15 @@ def run_bot():
                 log(f"setMyCommands failed: {e!r}")
         for u in updates:
             offset = u["update_id"] + 1
+            if "callback_query" in u:                # a tap on one of our buttons
+                cq = u["callback_query"]
+                chat = (cq.get("message") or {}).get("chat") or {}
+                if (cq.get("from") or {}).get("id") not in cfg["allowed_user_ids"] \
+                        or chat.get("type") != "private":
+                    log(f"ignored button from user {(cq.get('from') or {}).get('id')}")
+                    continue
+                threading.Thread(target=on_button, args=(bot, cq, cfg), daemon=True).start()
+                continue
             msg = u.get("message") or {}
             user = (msg.get("from") or {}).get("id")
             chat = msg.get("chat") or {}
@@ -737,7 +783,7 @@ def dispatch(bot, chat_id, text, cfg):
             bot.action(chat_id)
             reply = handle_command(text, cfg)
             if reply is not None:
-                bot.send(chat_id, reply)
+                bot.send(chat_id, reply, getattr(reply, "buttons", ()))
                 log("replied")
                 return
             # Unknown /command: let Claude handle it (e.g. "/ar4k" before it exists).
@@ -747,6 +793,42 @@ def dispatch(bot, chat_id, text, cfg):
             bot.send_plain(chat_id, f"Queued for Claude ({ahead} request(s) ahead). /cancel stops the current one.")
     except Exception as e:
         log(f"dispatch error: {e!r}")
+        bot.send_plain(chat_id, f"Error: {e!r}")
+
+
+def on_button(bot, cq, cfg):
+    """Button taps. Data is a command ("/pc_on"); "?/cmd" asks for confirmation first, "!/cmd"
+    is the confirmed command, "x" cancels. Buttons only ever run commands, never Claude."""
+    data, msg = cq.get("data") or "", cq.get("message") or {}
+    chat_id, msg_id = msg["chat"]["id"], msg.get("message_id")
+    label = next((b["text"] for row in (msg.get("reply_markup") or {}).get("inline_keyboard", [])
+                  for b in row if b.get("callback_data") == data), data)
+    try:
+        bot.call("answerCallbackQuery", callback_query_id=cq["id"], http_timeout=10,
+                 **({"text": "Cancelled"} if data == "x" else {}))
+        if data.startswith(("!", "x")):          # answered: remove the Yes/Cancel buttons
+            bot.call("editMessageReplyMarkup", chat_id=chat_id, message_id=msg_id, http_timeout=10,
+                     reply_markup={"inline_keyboard": []})
+    except Exception as e:
+        log(f"button ack failed: {e!r}")
+    if data == "x":
+        return
+    if data.startswith("?"):
+        bot.send(chat_id, f"<b>{html.escape(label)}</b>: are you sure?",
+                 [("Yes, " + label[0].lower() + label[1:], "!" + data[1:]), ("Cancel", "x")])
+        return
+    text = data.lstrip("!")
+    if not text.startswith("/"):
+        return
+    log(f"button {text[:40]}")
+    bot.action(chat_id)
+    try:
+        reply = handle_command(text, cfg)
+        bot.send(chat_id, reply if reply is not None else f"Unknown command {html.escape(text)}",
+                 getattr(reply, "buttons", ()))
+        log("replied")
+    except Exception as e:
+        log(f"button error: {e!r}")
         bot.send_plain(chat_id, f"Error: {e!r}")
 
 

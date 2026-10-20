@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 # description: Gaming PC: status, power, streaming
-# menu: pc status | Gaming PC: status
-# menu: pc_on on | Gaming PC: turn on (plug power cycle, only if it's off)
-# menu: pc_shutdown shutdown | Gaming PC: shut down cleanly
-# menu: pc_reboot reboot | Gaming PC: reboot
-# menu: pc_sunshine_restart sunshine-restart | Gaming PC: restart Sunshine (streaming)
-# menu: pc_gamemode gamemode | Gaming PC: switch to Game Mode
-# menu: pc_desktop desktop | Gaming PC: switch to Desktop Mode
+# menu: pc status | Gaming PC: status and controls
+# shortcut: pc_on on | Gaming PC: turn on (plug power cycle, only if it's off)
+# shortcut: pc_shutdown shutdown | Gaming PC: shut down cleanly
+# shortcut: pc_reboot reboot | Gaming PC: reboot
+# shortcut: pc_sunshine_restart sunshine-restart | Gaming PC: restart Sunshine (streaming)
+# shortcut: pc_gamemode gamemode | Gaming PC: switch to Game Mode
+# shortcut: pc_desktop desktop | Gaming PC: switch to Desktop Mode
 # shortcuts-only: yes
 """Bot command for a gaming PC (Bazzite) at home, driven over SSH from the Shield.
 
-Used only through its menu commands: /pc, /pc_on, /pc_shutdown, /pc_reboot,
-/pc_sunshine_restart, /pc_gamemode, /pc_desktop.
+/pc shows the status with buttons for what fits the PC's state (BUTTON: lines, turned into
+Telegram buttons by shield-bot; shutdown, reboot and mode switches ask for confirmation).
+The buttons run /pc_on, /pc_shutdown, /pc_reboot, /pc_sunshine_restart, /pc_gamemode and
+/pc_desktop, which also work when typed but are not listed in Telegram's menu.
 
 The PC side is examples/pc/shield-remote: the Shield's key may only run that script (forced
 command in the PC's authorized_keys), which accepts one word per action.
@@ -105,37 +107,64 @@ def wait_watts_below(conf, limit, seconds):
     return None
 
 
+def buttons(state, screen=""):
+    """BUTTON: lines for shield-bot: "/command | label [| confirm]"."""
+    if state == "off":
+        rows = ["/pc_on | Turn on", "/pc | Refresh"]
+    elif state == "on":
+        rows = ["/pc | Refresh", "/pc_sunshine_restart | Restart Sunshine",
+                "/pc_desktop | Desktop Mode | confirm" if screen == "Game Mode"
+                else "/pc_gamemode | Game Mode | confirm",
+                "/pc_reboot | Reboot | confirm", "/pc_shutdown | Shut down | confirm"]
+    else:
+        rows = ["/pc | Status"]
+    print("\n".join("BUTTON: " + r for r in rows))
+
+
+def show_status(conf):
+    out = remote(conf, "status")
+    print(out)
+    m = re.search(r"^Screen:\s*(.+)$", out, re.M)
+    buttons("on", m.group(1).strip() if m else "")
+
+
 def main():
     conf = load_conf()
     action = (sys.argv[1] if len(sys.argv) > 1 else "status").lower()
     if action not in ACTIONS or len(sys.argv) > 2:
-        sys.exit("Unknown action - use the menu entries (/pc, /pc_on, /pc_shutdown, ...)")
+        sys.exit("Unknown action - send /pc and use its buttons")
 
     if action == "on":
         if up(conf):
-            print("The PC is already on.\n" + remote(conf, "status"))
+            print("The PC is already on.")
+            show_status(conf)
             return
         w, line = watts(conf)
         if w is not None and w >= ON_WATTS:
             print(f"Not cutting power: the PC draws {w:.0f} W, so it's still running, starting or "
                   "shutting down. Check again with /pc in a minute.\nPlug: " + line)
+            buttons("after")
             return
         print(plug(conf, "cycle-start"))
         print("The PC boots right after power returns: check with /pc in about 2 minutes.")
+        buttons("after")
         return
 
     if not up(conf):
-        print("PC: off (or not reachable)\nTurn it on with /pc_on")
+        print("PC: off (or not reachable)")
         if action == "status":
             print("Plug: " + plug(conf, "status"))
+        buttons("off")
         return
 
     if action == "status":
-        print(remote(conf, "status"))
+        show_status(conf)
+        return
     elif action == "shutdown":
         print(remote(conf, "shutdown"), flush=True)
         if not wait(conf, False, 30):
             print("The PC is still reachable after 30 s - check /pc (an app may be blocking shutdown).")
+            buttons("after")
             return
         line = wait_watts_below(conf, ON_WATTS, 80)    # SSH closes early; power draw tells when it's off
         print("PC is off. Plug: " + line if line else
@@ -146,6 +175,7 @@ def main():
               else "The PC didn't go down within 40 s - check /pc.")
     else:
         print(remote(conf, action))
+    buttons("after")
 
 
 if __name__ == "__main__":

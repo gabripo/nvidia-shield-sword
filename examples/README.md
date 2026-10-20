@@ -139,14 +139,20 @@ Or ask the bot: *"add my Shelly plug at 192.168.1.52 as plug 3 named heater"*; C
 For a home-theater gaming PC running [Bazzite](https://bazzite.gg) (Game Mode, Steam, Sunshine),
 started with the plug trick above. The Shield talks to the PC over SSH on the home network:
 
-| Command | What it does |
+Send **`/pc`**: the reply shows the PC's state (on/off, Game or Desktop Mode, Sunshine and
+whether someone is streaming, Tailscale, temperatures) with **buttons** for what fits that state:
+
+| Button | What it does |
 |---|---|
-| `/pc` | On/off, Game or Desktop Mode, Sunshine (streaming now?), Tailscale, temperatures |
-| `/pc_on` | Turns the PC on with the plug's power cycle, **only if it's off** (never cuts power to a running PC) |
-| `/pc_shutdown` | Clean shutdown, then confirms it's off |
-| `/pc_reboot` | Reboot, then reports when it's back |
-| `/pc_sunshine_restart` | Restarts Sunshine (game streaming) |
-| `/pc_gamemode` · `/pc_desktop` | Switches between Game Mode and Desktop Mode |
+| Turn on | Plug power cycle, **only if the PC is off and draws < 10 W** (never cuts power to a running PC); replies at once |
+| Shut down | Clean shutdown (asks *are you sure?*), then confirms when the plug reads ~0 W |
+| Reboot | Asks *are you sure?*, reboots |
+| Restart Sunshine | Restarts game streaming |
+| Desktop Mode / Game Mode | Switches to the other mode (asks *are you sure?*) |
+| Refresh | Status again |
+
+The buttons run `/pc_on`, `/pc_shutdown`, `/pc_reboot`, `/pc_sunshine_restart`,
+`/pc_desktop`, `/pc_gamemode`, which also work when typed but stay out of Telegram's menu.
 
 The Shield's key can only run [`examples/pc/shield-remote`](pc/shield-remote) on the PC: it is a
 *forced command* in the PC's `authorized_keys`, so the key gets no shell and the script accepts
@@ -182,7 +188,7 @@ poweroff` over SSH is refused).
    plug=pc
    ```
 
-5. Send `/pc`. The menu entries appear within a minute.
+5. Send `/pc`. It appears in the menu within a minute.
 
 ### Streaming from outside (Sunshine + Moonlight + Tailscale)
 
