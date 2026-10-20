@@ -240,25 +240,36 @@ def menu_shortcuts():
     return out
 
 
-def menu_hidden():
-    """User commands with "# menu-hide: yes" in their first lines: usable when typed, but not
-    listed in Telegram's menu (e.g. when their shortcuts cover everything)."""
-    hidden = set()
+def _flagged(flag):
+    """User commands with "# <flag>: yes" in their first lines."""
+    found = set()
     for name in user_commands():
         for line in _header(os.path.join(ROOTFS + COMMANDS_DIR, name)):
-            if re.match(r"^\s*(?:#|//|--)\s*menu-hide:\s*(yes|true|1)\b", line, re.I):
-                hidden.add(name)
-    return hidden
+            if re.match(r"^\s*(?:#|//|--)\s*" + flag + r":\s*(yes|true|1)\b", line, re.I):
+                found.add(name)
+    return found
 
 
-def run_user_command(name, arg, cfg):
+def shortcuts_only():
+    """Commands with "# shortcuts-only: yes": usable only through their menu shortcuts (no typed
+    arguments with spaces, not even the bare command); not listed themselves."""
+    return _flagged("shortcuts-only")
+
+
+def menu_hidden():
+    """Commands not listed in Telegram's menu: "# menu-hide: yes" (still usable when typed)
+    plus all shortcuts-only commands."""
+    return _flagged("menu-hide") | shortcuts_only()
+
+
+def run_user_command(name, arg, cfg, label=None):
     try:
         args = shlex.split(arg)
     except ValueError:
         args = [arg] if arg else []
     cmd = f"cd {WORKSPACE} && ./commands/{name} " + " ".join(shlex.quote(a) for a in args)
     code, out = debian(cmd, timeout=cfg["command_timeout"])
-    return pre(out, f"/{name}" + (f" {arg}" if arg else "") + f" - exit {code}")
+    return pre(out, (label or f"/{name}" + (f" {arg}" if arg else "")) + f" - exit {code}")
 
 
 # ------------------------------------------------------------------ built-ins
@@ -283,9 +294,12 @@ def b_commands(_a, _c):
 
 def _command_lines(uc):
     """Each user command, followed by its menu shortcuts (indented)."""
-    shortcuts = menu_shortcuts()
+    shortcuts, only = menu_shortcuts(), shortcuts_only()
     lines = []
     for n, d in uc.items():
+        if n in only:                     # list just the shortcuts
+            lines += [f"/{sc} - {html.escape(desc)}" for sc, base, _a, desc in shortcuts if base == n]
+            continue
         lines.append(f"/{n} - {html.escape(d)}")
         lines += [f"   /{sc} - {html.escape(desc)}" for sc, base, _a, desc in shortcuts if base == n]
     return lines
@@ -347,11 +361,18 @@ def handle_command(text, cfg):
     arg = arg.strip()
     if name in HANDLERS:
         return HANDLERS[name](arg, cfg)
-    if name in user_commands():
+    only = shortcuts_only()
+    if name in user_commands() and name not in only:
         return run_user_command(name, arg, cfg)
-    for short, base, args, _desc in menu_shortcuts():      # e.g. /plug_pc_cycle -> /plug pc cycle
+    for short, base, args, _desc in menu_shortcuts():      # e.g. /plug_pc_cycle -> plug pc cycle
         if short == name:
-            return run_user_command(base, (args + " " + arg).strip(), cfg)
+            # Shortcuts of shortcuts-only commands take no extra words.
+            if base in only:
+                return run_user_command(base, args, cfg, label=f"/{short}")
+            return run_user_command(base, (args + " " + arg).strip(), cfg, label=f"/{short}" + (f" {arg}" if arg else ""))
+    if name in only:
+        return "Use the menu entries for this command: " + " ".join(
+            f"/{sc}" for sc, base, _a, _d in menu_shortcuts() if base == name)
     return None
 
 

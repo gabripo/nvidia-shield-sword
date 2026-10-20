@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="980" height="430" viewBox="0 0 980 430" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif">
-  <title>/plug pc cycle: from Telegram to a PC that powers on after a power cycle</title>
+  <title>/plug_pc_cycle: from Telegram to a PC that powers on after a power cycle</title>
   <rect width="980" height="430" rx="18" fill="#ffffff"/>
 
   <!-- Phone -->
   <rect x="30" y="60" width="150" height="250" rx="22" fill="#f4f6f8" stroke="#4a5560" stroke-width="3"/>
   <rect x="45" y="90" width="120" height="190" rx="6" fill="#ffffff" stroke="#c6ccd2"/>
   <rect x="58" y="110" width="94" height="34" rx="10" fill="#d9f2b4"/>
-  <text x="105" y="132" text-anchor="middle" font-size="13" font-family="Menlo, monospace" fill="#1c2b0a">/plug pc cycle</text>
+  <text x="105" y="132" text-anchor="middle" font-size="13" font-family="Menlo, monospace" fill="#1c2b0a">/plug_pc_cycle</text>
   <rect x="58" y="160" width="94" height="58" rx="10" fill="#eef1f4"/>
   <text x="105" y="180" text-anchor="middle" font-size="10.5" fill="#333">1 pc: OFF,</text>
   <text x="105" y="194" text-anchor="middle" font-size="10.5" fill="#333">back on in 60 s…</text>
@@ -64,6 +64,6 @@
   <polygon points="642,198 630,191 630,205" fill="#4a5560"/>
   <polygon points="832,195 820,188 820,202" fill="#4a5560"/>
 
-  <text x="490" y="40" text-anchor="middle" font-size="18" font-weight="700" fill="#222">/plug pc cycle: turn a PC on remotely</text>
+  <text x="490" y="40" text-anchor="middle" font-size="18" font-weight="700" fill="#222">/plug_pc_cycle: turn a PC on remotely</text>
   <text x="490" y="405" text-anchor="middle" font-size="12" fill="#666">The plug's own timer switches power back on, so the off time is exact even if Wi-Fi is slow.</text>
 </svg>

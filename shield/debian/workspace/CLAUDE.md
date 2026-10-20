@@ -46,7 +46,7 @@ Rules for a command file:
    Reserved (built-ins): help, start, status, sh, termux, commands, logs, new, cancel.
 2. First line a shebang (`#!/bin/bash` or `#!/usr/bin/env python3`), then within the first
    lines a comment `# description: <one line shown in Telegram's menu>`.
-3. Arguments after the command are passed as normal arguments (`/plug on` → `commands/plug on`).
+3. Arguments after the command are passed as normal arguments (`/backup nas` → `commands/backup nas`).
    Print a short, useful result to stdout; exit non-zero on failure. It runs with cwd
    `/root/workspace`, as root, and is killed after 120 s.
 4. `chmod +x` it, then **test it** by running it, and show the owner the output.
@@ -70,6 +70,8 @@ Rules for a command file:
    file (one set per device, like `commands/plug`), use `# menu: dynamic` plus
    `# menu-depends: <file>` and make `<command> --menu` print `shortcut<TAB>args<TAB>description`
    lines. The menu holds at most 100 entries in total, so add only shortcuts the owner will use.
+   The owner prefers commands without spaces: when every action has a shortcut, also add
+   `# shortcuts-only: yes` so only the underscore commands exist (like `commands/plug`).
 
 When the owner asks to delete a command, remove its file and its README line.
 

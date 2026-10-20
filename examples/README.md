@@ -24,25 +24,24 @@ Send `/new` first if the current conversation should forget earlier context.
 
 ## commands/plug: Shelly smart plugs
 
-![/plug pc cycle: phone → Telegram → Shield → Wi-Fi → Shelly plug → PC](../docs/img/plug.svg)
+![/plug_pc_cycle: phone → Telegram → Shield → Wi-Fi → Shelly plug → PC](../docs/img/plug.svg)
 
 Controls one or more Shelly plugs on your Wi-Fi directly over their local API (Gen2/Gen3/Gen4,
 tested with a Shelly Plug S Gen3; no Shelly cloud):
 
 | Command | What it does |
 |---|---|
-| `/plug` | Status of all plugs, e.g. `1 pc: ON · 48.2 W · 38 °C · 1.24 kWh` |
-| `/plug list` | Configured plugs with IP and cycle time |
-| `/plug pc on` · `/plug 1 off` · `/plug pc toggle` | Switch a plug, by **name or number** |
-| `/plug pc cycle` | **Power cycle**: off for N seconds (default 60), then on again |
-| `/plug pc cycle 90` | Same, with a 90 s off time this once |
+| Command | What it does |
+|---|---|
+| `/plugs` | Status of all plugs, e.g. `1 pc: ON · 48.2 W · 38 °C · 1.24 kWh` |
+| `/plug_pc` | Status of plug `pc` |
+| `/plug_pc_on` · `/plug_pc_off` · `/plug_pc_toggle` | Switch plug `pc` |
+| `/plug_pc_cycle` | **Power cycle**: off for the plug's cycle time (default 60 s), then on again |
 
-With a single plug configured, the name can be left out (`/plug cycle`).
-
-Every plug also gets **one-tap entries in Telegram's command menu**, generated from
-`plugs.conf`: `/plug_pc` (status), `/plug_pc_on`, `/plug_pc_off`, `/plug_pc_toggle`,
-`/plug_pc_cycle`. Add a plug and its entries appear within a minute. The bare `/plug` is not
-listed in the menu (`# menu-hide: yes`) but still works when typed.
+These are generated **per plug** from `plugs.conf` (`pc` is the plug's name; a plug named `lamp`
+gets `/plug_lamp_on`, …) and all appear in Telegram's command menu (the **/** button); a new
+plug's entries appear within a minute. There are no commands with spaces: the underlying
+`commands/plug` is *shortcuts-only*.
 
 ### Turning a PC on with `cycle`
 
@@ -75,9 +74,9 @@ mains power returns. Only the BIOS option names and the needed off time differ.
    *Deep Sleep*, *ErP Ready*, *EuP*, *Deep S4/S5*.
 3. **Optional:** disable USB power in the off state (*USB power in S5*, *USB standby power*) if you
    don't want USB devices powered while the PC is off; disable USB wake options then too.
-4. **Find the off time.** Shut the PC down, then try `/plug pc cycle 30`, `60`, `90`… until it
-   boots (the reply shows tens of watts when it does). Put the working value in `plugs.conf`
-   (fourth column) so `/plug pc cycle` always uses it.
+4. **Find the off time.** Shut the PC down, set a cycle time in `plugs.conf` (fourth column:
+   30, then 60, 90…), and send `/plug_pc_cycle` until the PC boots (the reply shows tens of
+   watts when it does). Keep the value that works.
 5. **Check it twice**, also after a normal shutdown from the operating system.
 
 #### Tested configurations
@@ -99,12 +98,12 @@ Tested another PC? A pull request adding a row to this table is welcome.
 
 #### If the PC doesn't start
 
-1. With the plug ON, press the PC's power button: `/plug pc` should show tens of watts while it
+1. With the plug ON, press the PC's power button: `/plug_pc` should show tens of watts while it
    boots. If not, the plug doesn't feed the PC (check the PSU's rear switch and the cable).
    Note: a shut-down PC usually shows **0.0 W**; its standby draw is below what the plug measures.
 2. Check *Restore on AC/Power Loss* is **Power On** (not *Last State*) and saved (F10).
 3. Disable *Deep Sleep* / *ErP Ready*.
-4. Lengthen the off time (`/plug pc cycle 90`).
+4. Lengthen the off time (fourth column in `plugs.conf`, e.g. `90`; at most 100 s).
 5. Alternative without cutting power: Wake-on-LAN (BIOS *PCIE Devices Power On = Enabled*; ask
    the bot: *"create a command /wake that sends a Wake-on-LAN packet to my PC, MAC
    aa:bb:cc:dd:ee:ff"*).
@@ -131,7 +130,8 @@ Tested another PC? A pull request adding a row to this table is welcome.
    2         lamp   192.168.1.51
    ```
 
-4. Send `/plug` to the bot. New plugs: add a line, no restart needed.
+4. Send `/plugs` to the bot. New plugs: add a line, no restart needed; their menu entries
+   appear within a minute.
 
 Or ask the bot: *"add my Shelly plug at 192.168.1.52 as plug 3 named heater"*; Claude edits
 `plugs.conf` for you.
