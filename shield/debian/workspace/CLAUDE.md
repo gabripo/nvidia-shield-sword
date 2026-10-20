@@ -59,6 +59,17 @@ Rules for a command file:
    give the owner the public key to authorize on that machine. Commands must be
    non-interactive (`ssh -o BatchMode=yes ...`).
 8. Keep `commands/README.md` up to date with one line per command.
+9. **Menu shortcuts.** Telegram's command menu only holds single words, so when a command has
+   useful argument combinations, add one-tap shortcuts in its header (they appear in the menu
+   right after the command and run it with those arguments):
+
+       # menu: ar4k_status status | Gaming PC: is it up?
+       # menu: ar4k_shutdown shutdown | Gaming PC: shut down
+
+   Shortcut names follow the same rules as command names. If the shortcuts depend on a config
+   file (one set per device, like `commands/plug`), use `# menu: dynamic` plus
+   `# menu-depends: <file>` and make `<command> --menu` print `shortcut<TAB>args<TAB>description`
+   lines. The menu holds at most 100 entries in total, so add only shortcuts the owner will use.
 
 When the owner asks to delete a command, remove its file and its README line.
 

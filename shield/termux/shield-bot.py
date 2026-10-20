@@ -174,6 +174,72 @@ def user_commands():
     return cmds
 
 
+_MENU_CACHE = {}   # command name -> (mtime key, [shortcuts]) for "# menu: dynamic" commands
+
+
+def _header(path, lines=25):
+    try:
+        with open(path, errors="replace") as f:
+            return f.readlines()[:lines]
+    except OSError:
+        return []
+
+
+def menu_shortcuts():
+    """Menu shortcuts declared by user commands: [(shortcut, command, args, description)].
+
+    In a command's first lines:
+      # menu: <shortcut> <args...> | <description>    a static shortcut (repeatable)
+      # menu: dynamic                                 run `<command> --menu` for the list
+      # menu-depends: <path>                          re-run --menu when that file changes
+    `--menu` prints one shortcut per line: shortcut<TAB>args<TAB>description.
+    """
+    base = ROOTFS + COMMANDS_DIR
+    taken = set(BUILTINS) | set(user_commands())
+    out = []
+    for name in user_commands():
+        path = os.path.join(base, name)
+        head = _header(path)
+        entries, dynamic, depends = [], False, []
+        for line in head:
+            m = re.match(r"^\s*(?:#|//|--)\s*menu:\s*(.+)$", line, re.I)
+            if m:
+                spec = m.group(1).strip()
+                if spec.lower() == "dynamic":
+                    dynamic = True
+                else:
+                    left, _, desc = spec.partition("|")
+                    parts = left.split()
+                    if parts:
+                        entries.append((parts[0], " ".join(parts[1:]), desc.strip()))
+            m = re.match(r"^\s*(?:#|//|--)\s*menu-depends:\s*(\S+)", line, re.I)
+            if m:
+                depends.append(m.group(1))
+        if dynamic:
+            key = []
+            for f in [path] + [ROOTFS + (d if d.startswith("/") else f"{WORKSPACE}/{d}") for d in depends]:
+                try:
+                    key.append(os.path.getmtime(f))
+                except OSError:
+                    key.append(0)
+            cached = _MENU_CACHE.get(name)
+            if not cached or cached[0] != key:
+                code, text = debian(f"cd {WORKSPACE} && ./commands/{name} --menu", timeout=30)
+                found = []
+                for row in text.splitlines() if code == 0 else []:
+                    cols = row.split("\t")
+                    if len(cols) >= 2:
+                        found.append((cols[0].strip(), cols[1].strip(), cols[2].strip() if len(cols) > 2 else ""))
+                _MENU_CACHE[name] = cached = (key, found)
+            entries += cached[1]
+        for short, args, desc in entries:
+            short = short.lower()
+            if NAME_RE.match(short) and short not in taken:
+                taken.add(short)
+                out.append((short, name, args, desc or f"/{name} {args}"))
+    return out
+
+
 def run_user_command(name, arg, cfg):
     try:
         args = shlex.split(arg)
@@ -193,7 +259,7 @@ def b_help(_a, _c):
     uc = user_commands()
     lines += ["", "<b>Your commands</b>" if uc else
               "<i>No custom commands yet - ask Claude, e.g. \"create a command /plug that ...\"</i>"]
-    lines += [f"/{n} - {html.escape(d)}" for n, d in uc.items()]
+    lines += _command_lines(uc)
     return "\n".join(lines)
 
 
@@ -201,7 +267,17 @@ def b_commands(_a, _c):
     uc = user_commands()
     if not uc:
         return "No custom commands yet. Ask Claude to create one, e.g. \"create a command /ar4k that ...\"."
-    return "\n".join(f"/{n} - {html.escape(d)}" for n, d in uc.items())
+    return "\n".join(_command_lines(uc))
+
+
+def _command_lines(uc):
+    """Each user command, followed by its menu shortcuts (indented)."""
+    shortcuts = menu_shortcuts()
+    lines = []
+    for n, d in uc.items():
+        lines.append(f"/{n} - {html.escape(d)}")
+        lines += [f"   /{sc} - {html.escape(desc)}" for sc, base, _a, desc in shortcuts if base == n]
+    return lines
 
 
 def b_status(_a, _c):
@@ -262,6 +338,9 @@ def handle_command(text, cfg):
         return HANDLERS[name](arg, cfg)
     if name in user_commands():
         return run_user_command(name, arg, cfg)
+    for short, base, args, _desc in menu_shortcuts():      # e.g. /plug_pc_cycle -> /plug pc cycle
+        if short == name:
+            return run_user_command(base, (args + " " + arg).strip(), cfg)
     return None
 
 
@@ -543,9 +622,14 @@ class Bot:
         if not res.get("ok"):
             raise RuntimeError(f"{method}: {res.get('description')}")
 
-    def set_commands(self, cmds):
+    def set_commands(self, cmds, shortcuts=()):
+        """Telegram's command menu: built-ins, then each user command with its shortcuts."""
         menu = [{"command": n, "description": d[:250]} for n, d in BUILTINS.items()]
-        menu += [{"command": n, "description": d[:250]} for n, d in cmds.items()]
+        for n, d in cmds.items():
+            menu.append({"command": n, "description": d[:250]})
+            menu += [{"command": sc, "description": desc[:250]} for sc, base, _a, desc in shortcuts if base == n]
+        if len(menu) > 100:
+            log(f"command menu has {len(menu)} entries; Telegram shows the first 100")
         self.call("setMyCommands", commands=menu[:100])
 
 
@@ -559,8 +643,8 @@ def run_bot():
     log(f"started as @{me['username']}, allowed users {cfg['allowed_user_ids']}")
     threading.Thread(target=CLAUDE.loop, args=(cfg,), daemon=True).start()
     threading.Thread(target=maintenance, daemon=True).start()
-    menu = user_commands()
-    bot.set_commands(menu)
+    menu = (user_commands(), menu_shortcuts())
+    bot.set_commands(*menu)
     # Drop messages sent while the bot was offline: never replay old commands.
     pending = bot.call("getUpdates", offset=-1, timeout=0)
     offset = pending[-1]["update_id"] + 1 if pending else 0
@@ -585,11 +669,11 @@ def run_bot():
             time.sleep(backoff)
             backoff = min(backoff * 2, 300)
             continue
-        current = user_commands()
-        if current != menu:                      # Claude (or you) added/removed a command
+        current = (user_commands(), menu_shortcuts())
+        if current != menu:                      # Claude (or you) changed commands or their shortcuts
             menu = current
             try:
-                bot.set_commands(menu)
+                bot.set_commands(*menu)
             except Exception as e:
                 log(f"setMyCommands failed: {e!r}")
         for u in updates:

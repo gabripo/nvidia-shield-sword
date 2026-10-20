@@ -39,6 +39,10 @@ tested with a Shelly Plug S Gen3; no Shelly cloud):
 
 With a single plug configured, the name can be left out (`/plug cycle`).
 
+Every plug also gets **one-tap entries in Telegram's command menu**, generated from
+`plugs.conf`: `/plug_pc` (status), `/plug_pc_on`, `/plug_pc_off`, `/plug_pc_toggle`,
+`/plug_pc_cycle`. Add a plug and its entries appear within a minute.
+
 ### Turning a PC on with `cycle`
 
 A PC whose BIOS is set to power on when mains power returns can be started remotely by cutting
