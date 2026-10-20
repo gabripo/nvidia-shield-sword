@@ -1,47 +1,147 @@
-#!/bin/bash
-# description: Shelly smart plug - /plug [on|off|toggle|status]
-#
-# Bot command for a Shelly plug (Gen2/Gen3/Gen4 RPC API, e.g. Shelly Plug S Gen3).
-# Install: copy to /root/workspace/commands/plug (chmod +x) and create
-# /root/workspace/.secrets/plug.env (chmod 600) with:
-#   SHELLY_HOST=192.168.1.50        # the plug's IP (give it a fixed one in your router)
-#   SHELLY_PASS=                    # only if you enabled a password in the Shelly app
-set -euo pipefail
+#!/usr/bin/env python3
+# description: Smart plugs - /plug [name|number] [on|off|toggle|cycle [seconds]|status]
+"""Bot command for Shelly smart plugs (Gen2/Gen3/Gen4 local RPC API, no cloud).
 
-ENV_FILE=/root/workspace/.secrets/plug.env
-[ -f "$ENV_FILE" ] || { echo "Missing $ENV_FILE (SHELLY_HOST=<ip>)"; exit 1; }
-# shellcheck source=/dev/null
-. "$ENV_FILE"
-: "${SHELLY_HOST:?SHELLY_HOST is not set in $ENV_FILE}"
+  /plug                      status of all plugs
+  /plug list                 configured plugs
+  /plug pc cycle             power-cycle plug "pc": off for N s, then on again
+  /plug pc cycle 30          same, with a 30 s off time this once
+  /plug 1 on | off | toggle  switch plug number 1
+  /plug on                   (works without a plug name when only one plug is configured)
 
-rpc() {  # rpc <method> [query]
-  local auth=()
-  [ -n "${SHELLY_PASS:-}" ] && auth=(--digest -u "admin:$SHELLY_PASS")
-  curl -sf -m 8 "${auth[@]}" "http://$SHELLY_HOST/rpc/$1${2:+?$2}" \
-    || { echo "Can't reach the plug at $SHELLY_HOST (offline, wrong IP, or password needed)"; exit 1; }
-}
+Plugs are configured in /root/workspace/.secrets/plugs.conf (chmod 600), one per line:
 
-action="${1:-status}"
-case "$action" in
-  on)     rpc Switch.Set "id=0&on=true" >/dev/null ;;
-  off)    rpc Switch.Set "id=0&on=false" >/dev/null ;;
-  toggle) rpc Switch.Toggle "id=0" >/dev/null ;;
-  status) ;;
-  *) echo "Usage: /plug [on|off|toggle|status]"; exit 2 ;;
-esac
-[ "$action" = status ] || sleep 1   # let the power reading settle after switching
+  # number  name   ip              [cycle_seconds]  [password]
+  1         pc     192.168.1.50    10
+  2         lamp   192.168.1.51
 
-rpc Switch.GetStatus "id=0" | python3 -c '
-import json, sys
-s = json.load(sys.stdin)
-state = "ON" if s.get("output") else "OFF"
-parts = [f"Plug is {state}"]
-power, volts = s.get("apower"), s.get("voltage")
-temp = (s.get("temperature") or {}).get("tC")
-energy = (s.get("aenergy") or {}).get("total")      # Wh
-if power is not None:  parts.append(f"{power:.1f} W")
-if volts is not None:  parts.append(f"{volts:.0f} V")
-if temp is not None:   parts.append(f"{temp:.0f} °C")
-if energy is not None: parts.append(f"{energy / 1000:.2f} kWh total")
-print(" · ".join(parts))
-'
+"cycle" uses the plug's own timer (Switch.Set with toggle_after), so the off time is exact
+even if the network is slow: long enough for a PC set to "power on after AC loss" to boot.
+"""
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+CONF = "/root/workspace/.secrets/plugs.conf"
+ACTIONS = ("on", "off", "toggle", "cycle", "status", "list")
+DEFAULT_CYCLE = 10
+
+
+def load_plugs():
+    plugs = []
+    try:
+        lines = open(CONF).read().splitlines()
+    except FileNotFoundError:
+        sys.exit(f"No plugs configured: create {CONF} (see the comment in this command).")
+    for line in lines:
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        f = line.split()
+        if len(f) < 3:
+            sys.exit(f"Bad line in {CONF}: {line!r} (need: number name ip [cycle_seconds] [password])")
+        plugs.append({"num": f[0], "name": f[1].lower(), "host": f[2],
+                      "cycle": int(f[3]) if len(f) > 3 and f[3].isdigit() else DEFAULT_CYCLE,
+                      "password": f[4] if len(f) > 4 else ""})
+    if not plugs:
+        sys.exit(f"No plugs configured in {CONF}.")
+    return plugs
+
+
+def rpc(plug, method, **params):
+    query = "&".join(f"{k}={str(v).lower() if isinstance(v, bool) else v}" for k, v in params.items())
+    url = f"http://{plug['host']}/rpc/{method}" + (f"?{query}" if query else "")
+    handlers = []
+    if plug["password"]:
+        pm = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+        pm.add_password(None, f"http://{plug['host']}/", "admin", plug["password"])
+        handlers.append(urllib.request.HTTPDigestAuthHandler(pm))
+    try:
+        with urllib.request.build_opener(*handlers).open(url, timeout=8) as r:
+            return json.load(r)
+    except (urllib.error.URLError, OSError) as e:
+        raise RuntimeError(f"can't reach {plug['name']} at {plug['host']} ({e})")
+
+
+def describe(plug, s):
+    parts = [f"{plug['num']} {plug['name']}: {'ON' if s.get('output') else 'OFF'}"]
+    if s.get("apower") is not None:
+        parts.append(f"{s['apower']:.1f} W")
+    temp = (s.get("temperature") or {}).get("tC")
+    if temp is not None:
+        parts.append(f"{temp:.0f} °C")
+    energy = (s.get("aenergy") or {}).get("total")
+    if energy is not None:
+        parts.append(f"{energy / 1000:.2f} kWh")
+    return " · ".join(parts)
+
+
+def status(plug):
+    try:
+        return describe(plug, rpc(plug, "Switch.GetStatus", id=0))
+    except RuntimeError as e:
+        return f"{plug['num']} {plug['name']}: offline ({e})"
+
+
+def main():
+    plugs = load_plugs()
+    args = [a.lower() for a in sys.argv[1:]]
+    selector = args.pop(0) if args and args[0] not in ACTIONS else None
+    action = args[0] if args else "status"
+    seconds = None
+    if action == "cycle" and len(args) == 2 and args[1].isdigit():
+        seconds = int(args.pop())                       # one-off off time: /plug pc cycle 30
+    if action not in ACTIONS or len(args) > 1:
+        sys.exit("Usage: /plug [name|number] [on|off|toggle|cycle [seconds]|status]   (/plug list shows the plugs)")
+
+    if action == "list":
+        print("\n".join(f"{p['num']} {p['name']} - {p['host']} (cycle {p['cycle']} s)" for p in plugs))
+        return
+    if selector is None:
+        if action == "status":
+            print("\n".join(status(p) for p in plugs))
+            return
+        if len(plugs) > 1:
+            sys.exit("Which plug? " + ", ".join(f"{p['num']} {p['name']}" for p in plugs)
+                     + f" - e.g. /plug {plugs[0]['name']} {action}")
+        plug = plugs[0]
+    else:
+        match = [p for p in plugs if selector in (p["num"], p["name"])]
+        if not match:
+            sys.exit(f"No plug '{selector}'. Plugs: " + ", ".join(f"{p['num']} {p['name']}" for p in plugs))
+        plug = match[0]
+
+    try:
+        if action == "status":
+            print(status(plug))
+        elif action in ("on", "off"):
+            rpc(plug, "Switch.Set", id=0, on=(action == "on"))
+            time.sleep(1)
+            print(describe(plug, rpc(plug, "Switch.GetStatus", id=0)))
+        elif action == "toggle":
+            rpc(plug, "Switch.Toggle", id=0)
+            time.sleep(1)
+            print(describe(plug, rpc(plug, "Switch.GetStatus", id=0)))
+        elif action == "cycle":
+            n = max(3, min(seconds or plug["cycle"], 90))
+            # The plug switches off now and back on by itself after n seconds.
+            rpc(plug, "Switch.Set", id=0, on=False, toggle_after=n)
+            print(f"{plug['num']} {plug['name']}: OFF, back on in {n} s (plug timer)...", flush=True)
+            time.sleep(n + 2)
+            s = rpc(plug, "Switch.GetStatus", id=0)
+            if not s.get("output"):                        # timer didn't fire: switch on explicitly
+                rpc(plug, "Switch.Set", id=0, on=True)
+                time.sleep(1)
+            time.sleep(6)                                  # give the connected device time to start
+            s = rpc(plug, "Switch.GetStatus", id=0)
+            watts = s.get("apower") or 0
+            print("Power cycle done: " + describe(plug, s)
+                  + (" - something is drawing power (booting?)" if watts >= 5 else " - nothing drawing power yet"))
+    except RuntimeError as e:
+        sys.exit(str(e))
+
+
+if __name__ == "__main__":
+    main()
