@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+# description: Gaming PC: status, power, streaming
+# menu: pc status | Gaming PC: status
+# menu: pc_on on | Gaming PC: turn on (plug power cycle, only if it's off)
+# menu: pc_shutdown shutdown | Gaming PC: shut down cleanly
+# menu: pc_reboot reboot | Gaming PC: reboot
+# menu: pc_sunshine_restart sunshine-restart | Gaming PC: restart Sunshine (streaming)
+# menu: pc_gamemode gamemode | Gaming PC: switch to Game Mode
+# menu: pc_desktop desktop | Gaming PC: switch to Desktop Mode
+# shortcuts-only: yes
+"""Bot command for a gaming PC (Bazzite) at home, driven over SSH from the Shield.
+
+Used only through its menu commands: /pc, /pc_on, /pc_shutdown, /pc_reboot,
+/pc_sunshine_restart, /pc_gamemode, /pc_desktop.
+
+The PC side is examples/pc/shield-remote: the Shield's key may only run that script (forced
+command in the PC's authorized_keys), which accepts one word per action.
+
+Configuration in /root/workspace/.secrets/pc.conf (chmod 600), KEY=value lines:
+
+  host=192.168.1.65            # the PC's fixed LAN address
+  user=<user>                  # your user on the PC
+  key=/root/.ssh/pc_bazzite    # private key of the Shield (ssh-keygen -t ed25519)
+  plug=pc                      # plug name in plugs.conf, used by /pc_on (commands/plug)
+
+/pc_on only power-cycles the plug when the PC is off: cutting power to a running PC is never
+done here.
+"""
+import socket
+import subprocess
+import sys
+import time
+
+CONF = "/root/workspace/.secrets/pc.conf"
+ACTIONS = ("status", "on", "shutdown", "reboot", "sunshine-restart", "gamemode", "desktop")
+
+
+def load_conf():
+    conf = {"user": "root", "key": "/root/.ssh/pc_bazzite", "plug": "pc"}
+    try:
+        for line in open(CONF):
+            line = line.split("#", 1)[0].strip()
+            if "=" in line:
+                k, v = line.split("=", 1)
+                conf[k.strip()] = v.strip()
+    except FileNotFoundError:
+        sys.exit(f"Not configured: create {CONF} (see the comment in this command).")
+    if "host" not in conf:
+        sys.exit(f"Set host=<PC address> in {CONF}.")
+    return conf
+
+
+def up(conf, timeout=3):
+    """True if the PC's SSH port answers."""
+    try:
+        socket.create_connection((conf["host"], 22), timeout=timeout).close()
+        return True
+    except OSError:
+        return False
+
+
+def wait(conf, want_up, seconds):
+    end = time.time() + seconds
+    while time.time() < end:
+        if up(conf) == want_up:
+            return True
+        time.sleep(3)
+    return False
+
+
+def remote(conf, action, timeout=40):
+    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+                        "-o", "StrictHostKeyChecking=accept-new", "-i", conf["key"],
+                        f"{conf['user']}@{conf['host']}", action],
+                       capture_output=True, text=True, timeout=timeout)
+    out = (r.stdout + r.stderr).strip()
+    if r.returncode not in (0, 255) or (r.returncode == 255 and action == "status"):
+        raise RuntimeError(out or f"ssh exit {r.returncode}")
+    return out
+
+
+def plug(conf, action):
+    r = subprocess.run(["./commands/plug", conf["plug"], action], capture_output=True, text=True,
+                       timeout=110, cwd="/root/workspace")
+    return (r.stdout + r.stderr).strip()
+
+
+def main():
+    conf = load_conf()
+    action = (sys.argv[1] if len(sys.argv) > 1 else "status").lower()
+    if action not in ACTIONS or len(sys.argv) > 2:
+        sys.exit("Unknown action - use the menu entries (/pc, /pc_on, /pc_shutdown, ...)")
+
+    if action == "on":
+        if up(conf):
+            print("The PC is already on.\n" + remote(conf, "status"))
+            return
+        print(plug(conf, "cycle"), flush=True)
+        # ~70 s went into the power cycle; the bot stops commands after 120 s.
+        print("PC is up:\n" + remote(conf, "status") if wait(conf, True, 40)
+              else "The PC is booting - check with /pc in a minute.")
+        return
+
+    if not up(conf):
+        print("PC: off (or not reachable)\nTurn it on with /pc_on")
+        if action == "status":
+            print("Plug: " + plug(conf, "status"))
+        return
+
+    if action == "status":
+        print(remote(conf, "status"))
+    elif action == "shutdown":
+        print(remote(conf, "shutdown"), flush=True)
+        if wait(conf, False, 60):
+            time.sleep(5)
+            print("PC is off. Plug: " + plug(conf, "status"))
+        else:
+            print("The PC is still reachable after 60 s - check /pc (an app may be blocking shutdown).")
+    elif action == "reboot":
+        print(remote(conf, "reboot"), flush=True)
+        if not wait(conf, False, 40):
+            print("The PC didn't go down within 40 s - check /pc.")
+        elif wait(conf, True, 70):
+            print("PC is back:\n" + remote(conf, "status"))
+        else:
+            print("The PC is restarting - check with /pc in a minute.")
+    else:
+        print(remote(conf, action))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (RuntimeError, subprocess.TimeoutExpired) as e:
+        sys.exit(f"PC: {e}")

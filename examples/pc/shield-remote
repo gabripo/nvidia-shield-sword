@@ -1,0 +1,54 @@
+#!/bin/bash
+# The only thing the Shield's SSH key may run on the gaming PC (Bazzite / SteamOS-like).
+# Installed as ~/.local/bin/shield-remote and forced in ~/.ssh/authorized_keys:
+#
+#   restrict,command="/var/home/<user>/.local/bin/shield-remote" ssh-ed25519 AAAA... shield-bot@nvidia-shield
+#
+# The bot sends one word (SSH_ORIGINAL_COMMAND); anything else is refused.
+set -u
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+SUNSHINE_UNIT=app-dev.lizardbyte.app.Sunshine.service
+SUNSHINE_LOG="$HOME/.config/sunshine/sunshine.log"
+HELPERS=/usr/bin/steamos-polkit-helpers     # poweroff/reboot allowed without a password
+
+temp() {   # temperature in °C of the first hwmon sensor named $1 (optionally on PCI device $2)
+  local h
+  for h in /sys/class/hwmon/hwmon*; do
+    [ "$(cat "$h/name" 2>/dev/null)" = "$1" ] || continue
+    [ -n "${2:-}" ] && [ "$(cat "$h/device/device" 2>/dev/null)" != "$2" ] && continue
+    echo "$(( $(cat "$h/temp1_input") / 1000 )) °C"
+    return
+  done
+  echo "?"
+}
+
+mode() {
+  if pgrep -x gamescope-wl >/dev/null || pgrep -x gamescope >/dev/null; then echo "Game Mode"
+  elif pgrep -x kwin_wayland >/dev/null; then echo "Desktop Mode"
+  else echo "no session"; fi
+}
+
+status() {
+  local sun last ts
+  sun=$(systemctl --user is-active "$SUNSHINE_UNIT" 2>/dev/null)
+  last=$(grep -hE "CLIENT (CONNECTED|DISCONNECTED)" "$SUNSHINE_LOG" 2>/dev/null | tail -1)
+  ts=$(tailscale status --json 2>/dev/null | python3 -c \
+       'import json,sys; d=json.load(sys.stdin); print(d.get("BackendState","?"), (d.get("TailscaleIPs") or ["-"])[0])' 2>/dev/null)
+  echo "PC:        on, up $(uptime -p | sed 's/^up //')"
+  echo "Screen:    $(mode)"
+  echo "Sunshine:  ${sun:-unknown}$(case "$last" in *" CONNECTED"*) echo ", streaming now";; esac)"
+  echo "Tailscale: ${ts:-not running}"
+  echo "CPU:       $(temp k10temp) · GPU $(temp amdgpu 0x7550)"
+  echo "Load:      $(cut -d' ' -f1-3 /proc/loadavg) · RAM free $(free -h | awk '/^Mem/ {print $7}')"
+}
+
+case "${SSH_ORIGINAL_COMMAND:-status}" in
+  status)           status ;;
+  shutdown)         echo "Shutting down..."; setsid "$HELPERS/steamos-poweroff-now" >/dev/null 2>&1 < /dev/null & sleep 1 ;;
+  reboot)           echo "Rebooting...";      setsid "$HELPERS/steamos-reboot-now"   >/dev/null 2>&1 < /dev/null & sleep 1 ;;
+  sunshine-restart) systemctl --user restart "$SUNSHINE_UNIT" && sleep 3 &&
+                    echo "Sunshine: $(systemctl --user is-active "$SUNSHINE_UNIT")" ;;
+  gamemode)         steamos-session-select gamescope >/dev/null 2>&1 < /dev/null & sleep 1; echo "Switching to Game Mode..." ;;
+  desktop)          steamos-session-select plasma    >/dev/null 2>&1 < /dev/null & sleep 1; echo "Switching to Desktop Mode..." ;;
+  *)                echo "Not allowed: ${SSH_ORIGINAL_COMMAND}"; exit 2 ;;
+esac

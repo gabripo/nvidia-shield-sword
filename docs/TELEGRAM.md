@@ -170,7 +170,9 @@ private chats, so restarting the bot fixes it. Close and reopen the chat to refr
 
 Ready-made commands for Shelly smart plugs (`/plugs`, `/plug_<name>_on`, `/plug_<name>_cycle`, …) are in
 [`examples/commands/plug`](../examples/commands/plug)
-(see [examples/README.md](../examples/README.md)).
+(see [examples/README.md](../examples/README.md)). For a gaming PC (Bazzite) there's
+[`examples/commands/pcctl`](../examples/commands/pcctl): `/pc`, `/pc_on`, `/pc_shutdown`,
+`/pc_reboot`, … over a restricted SSH key.
 
 Examples you can ask Claude for: *"create /lamp_on and /lamp_off for my Shelly plug at
 192.168.1.51"*, *"create /ar4k that runs a command on my gaming PC over SSH"* (Claude creates a key

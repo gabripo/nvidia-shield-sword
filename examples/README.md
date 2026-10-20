@@ -31,8 +31,6 @@ tested with a Shelly Plug S Gen3; no Shelly cloud):
 
 | Command | What it does |
 |---|---|
-| Command | What it does |
-|---|---|
 | `/plugs` | Status of all plugs, e.g. `1 pc: ON · 48.2 W · 38 °C · 1.24 kWh` |
 | `/plug_pc` | Status of plug `pc` |
 | `/plug_pc_on` · `/plug_pc_off` · `/plug_pc_toggle` | Switch plug `pc` |
@@ -135,3 +133,78 @@ Tested another PC? A pull request adding a row to this table is welcome.
 
 Or ask the bot: *"add my Shelly plug at 192.168.1.52 as plug 3 named heater"*; Claude edits
 `plugs.conf` for you.
+
+## commands/pcctl: gaming PC (Bazzite)
+
+For a home-theater gaming PC running [Bazzite](https://bazzite.gg) (Game Mode, Steam, Sunshine),
+started with the plug trick above. The Shield talks to the PC over SSH on the home network:
+
+| Command | What it does |
+|---|---|
+| `/pc` | On/off, Game or Desktop Mode, Sunshine (streaming now?), Tailscale, temperatures |
+| `/pc_on` | Turns the PC on with the plug's power cycle, **only if it's off** (never cuts power to a running PC) |
+| `/pc_shutdown` | Clean shutdown, then confirms it's off |
+| `/pc_reboot` | Reboot, then reports when it's back |
+| `/pc_sunshine_restart` | Restarts Sunshine (game streaming) |
+| `/pc_gamemode` · `/pc_desktop` | Switches between Game Mode and Desktop Mode |
+
+The Shield's key can only run [`examples/pc/shield-remote`](pc/shield-remote) on the PC: it is a
+*forced command* in the PC's `authorized_keys`, so the key gets no shell and the script accepts
+one word per action. Shutdown and reboot use SteamOS's `steamos-poweroff-now` /
+`steamos-reboot-now` helpers, which Bazzite allows without a password (a plain `systemctl
+poweroff` over SSH is refused).
+
+### Install
+
+1. **On the PC** (Desktop Mode → Konsole): `sudo systemctl enable --now sshd`, give the PC a fixed
+   IP in the router, and copy `examples/pc/shield-remote` to `~/.local/bin/shield-remote`
+   (`chmod 755`).
+2. **On the Shield** (Debian): create the key, then show the public key:
+
+   ```bash
+   ssh-keygen -t ed25519 -N "" -C shield-bot@nvidia-shield -f ~/.ssh/pc_bazzite
+   cat ~/.ssh/pc_bazzite.pub
+   ```
+
+3. **On the PC**, add one line to `~/.ssh/authorized_keys` (your user name in the path):
+
+   ```
+   restrict,command="/var/home/<user>/.local/bin/shield-remote" ssh-ed25519 AAAA... shield-bot@nvidia-shield
+   ```
+
+4. **On the Shield**, install `examples/commands/pcctl` as `/root/workspace/commands/pcctl`
+   (`chmod 755`, as for `plug`) and create `/root/workspace/.secrets/pc.conf` (`chmod 600`):
+
+   ```
+   host=192.168.1.65
+   user=<user>
+   key=/root/.ssh/pc_bazzite
+   plug=pc
+   ```
+
+5. Send `/pc`. The menu entries appear within a minute.
+
+### Streaming from outside (Sunshine + Moonlight + Tailscale)
+
+What worked for this PC (Bazzite deck image, RX 9070 XT, Wi-Fi 6):
+
+- **Sunshine**: `ujust setup-sunshine` installs the Homebrew build with KMS capture, which also
+  works in Game Mode (the Flatpak can't capture Game Mode). Create the admin account at
+  `https://<pc-ip>:47990`.
+  - If the page says *CSRF Protection Error*, add every address you open it with to
+    `~/.config/sunshine/sunshine.conf`, e.g.
+    `csrf_allowed_origins = https://192.168.1.65:47990,https://bazzite:47990`, and restart
+    Sunshine (`/pc_sunshine_restart`).
+  - Remove the `steam://close/bigpicture` *undo* command from the "Steam Big Picture" app (Sunshine →
+    Applications). In Game Mode it drops Steam to its desktop window whenever Sunshine stops.
+- **Pairing**: pair each Moonlight client at home (PIN in Sunshine's web page).
+- **Over the internet: Tailscale.** Run `ujust enable-tailscale` then `sudo tailscale up` on the
+  PC, install the Tailscale app on phone and laptop, and in Moonlight add the PC by its Tailscale
+  address (`100.x.y.z`). Disable *key expiry* for the PC in Tailscale's admin page.
+  - Steam Deck: [tailscale-dev/deck-tailscale](https://github.com/tailscale-dev/deck-tailscale).
+- **Port forwarding is often not possible.** Many cable/fiber lines are IPv6-only with shared
+  IPv4 (DS-Lite / CGNAT). The router then hides *Port forwarding*, e.g. Sunrise's F3896LG
+  "Internet Box". Tailscale still works there.
+  - Devices that can't run Tailscale (e.g. a Nintendo Switch with Moonlight-Switch; the Switch has
+    no IPv6) need a public IPv4 from the provider, or a travel router running Tailscale.
+- **Never expose** port 47990 (Sunshine's admin page) or 22 (SSH) to the internet.
