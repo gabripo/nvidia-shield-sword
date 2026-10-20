@@ -48,21 +48,51 @@ or the Shield is slow. A quick `off`/`on` or `toggle` from the phone is often to
 power supply to register a power loss. After the cycle, the reply shows the power draw: tens of
 watts means the PC is booting.
 
-**Tested setup** (ASRock B850M Pro RS, from ASRock's *AMD 800 Series Software/BIOS Setup Guide*,
-section 3.4.5 *Advanced → ACPI Configuration*):
+The trick works with **most desktop PCs**: almost every motherboard can boot automatically when
+mains power returns. Only the BIOS option names and the needed off time differ.
 
-| BIOS setting | Value | Why |
-|---|---|---|
-| Restore on AC/Power Loss | **Power On** | boot when power returns |
-| Deep Sleep | **Disabled** | ASRock's recommendation; deep sleep can keep the board from noticing power returning |
-| USB Power delivery in Soft Off state (S5) | Disabled (optional) | no USB power while the PC is off (on our board some ports stayed powered anyway) |
-| USB Device Power on | Disabled (if the option above is Disabled) | needs USB power in S5 |
+#### Adapting it to your PC
 
-With these settings the PC **did not** start after 10, 15 or 30 s off, and **did** start after
-**60 s** off, hence the 60 s default. Other PCs may need more or less: try
-`/plug pc cycle 90`, then set the working value in `plugs.conf`.
+1. **Enable power-on after power loss.** Typical names (they vary by BIOS version; look in the
+   power, ACPI, chipset or advanced menus):
 
-If the PC doesn't start:
+   | Vendor | Typical option | Value |
+   |---|---|---|
+   | ASRock | Restore on AC/Power Loss | Power On |
+   | ASUS | Restore AC Power Loss | Power On |
+   | MSI | Restore after AC Power Loss | Power On |
+   | Gigabyte | AC BACK | Always On |
+   | Dell / HP / Lenovo (office PCs) | AC Recovery / After Power Loss / After Power Failure | Power On |
+
+   Use *Power On* / *Always On*, not *Last State*: with *Last State*, a PC you shut down normally
+   stays off.
+2. **Disable deep power-saving modes** that can keep the board from noticing power returning:
+   *Deep Sleep*, *ErP Ready*, *EuP*, *Deep S4/S5*.
+3. **Optional:** disable USB power in the off state (*USB power in S5*, *USB standby power*) if you
+   don't want USB devices powered while the PC is off; disable USB wake options then too.
+4. **Find the off time.** Shut the PC down, then try `/plug pc cycle 30`, `60`, `90`… until it
+   boots (the reply shows tens of watts when it does). Put the working value in `plugs.conf`
+   (fourth column) so `/plug pc cycle` always uses it.
+5. **Check it twice**, also after a normal shutdown from the operating system.
+
+#### Tested configurations
+
+| PC / motherboard | BIOS settings | Plug | Off time |
+|---|---|---|---|
+| ASRock **B850M Pro RS** (AMD AM5) | *Advanced → ACPI Configuration*: Restore on AC/Power Loss = **Power On**, Deep Sleep = **Disabled**; optional: USB Power delivery in Soft Off state (S5) = Disabled, USB Device Power on = Disabled | Shelly Plug S Gen3 (fw 1.7.3) | 10, 15 and 30 s: **no**; **60 s: boots** ✅ |
+
+Notes from that test:
+
+- Settings as documented in ASRock's *AMD 800 Series Software/BIOS Setup Guide*, section 3.4.5,
+  which also recommends Deep Sleep = Disabled.
+- *USB Power delivery in Soft Off state (S5) = Disabled* left some USB ports powered on this
+  board; turning the plug off after shutdown removes all power if that matters to you.
+- A shut-down PC reads **0.0 W** on the plug (standby draw is below its resolution), so the
+  reading can't tell whether standby power is present.
+
+Tested another PC? A pull request adding a row to this table is welcome.
+
+#### If the PC doesn't start
 
 1. With the plug ON, press the PC's power button: `/plug pc` should show tens of watts while it
    boots. If not, the plug doesn't feed the PC (check the PSU's rear switch and the cable).
