@@ -69,7 +69,9 @@ BUILTINS = {
     "logs": "Recent bot and start logs",
     "new": "Start a new Claude conversation",
     "cancel": "Stop the running Claude request",
+    "memory": "Claude memory: on (follow-ups continue the conversation) or off",
 }
+MENU_BUILTINS = ("help",)    # the other built-ins work when typed or tapped, but stay out of the menu
 
 
 def log(msg):
@@ -366,12 +368,38 @@ def b_logs(_a, _c):
                "logs")
 
 
+def memory_on():
+    return load_json(STATE_PATH, {}).get("claude_memory", True)
+
+
+def conversation_buttons():
+    """Buttons for a Claude conversation. They run commands, so they keep working on old
+    messages: /cancel stops whatever request is running, /new ends the conversation."""
+    return [("⏹ Cancel request", "/cancel"), ("🆕 End conversation", "/new"),
+            ("🧠 Memory: on - turn off", "/memory off") if memory_on()
+            else ("🧠 Memory: off - turn on", "/memory on")]
+
+
 def b_new(_a, _c):
-    CLAUDE.stop("new conversation")
+    if not CLAUDE.cancel():                  # a running request is stopped first
+        CLAUDE.stop("new conversation")
     st = load_json(STATE_PATH, {})
     st.pop("claude_session_id", None)
     save_json(STATE_PATH, st)
-    return "Started a new conversation: Claude won't remember earlier messages."
+    return "Conversation ended: your next message starts a new one."
+
+
+def b_memory(arg, _c):
+    arg = arg.lower()
+    if arg in ("on", "off"):
+        st = load_json(STATE_PATH, {})
+        st["claude_memory"] = arg == "on"
+        save_json(STATE_PATH, st)
+    reply = Reply("Claude memory: <b>on</b> - follow-up messages continue the conversation."
+                  if memory_on() else
+                  "Claude memory: <b>off</b> - every message starts a new conversation.")
+    reply.buttons = [conversation_buttons()[2]]
+    return reply
 
 
 def b_cancel(_a, _c):
@@ -381,7 +409,7 @@ def b_cancel(_a, _c):
 HANDLERS = {
     "help": b_help, "start": b_help, "commands": b_commands, "status": b_status,
     "sh": lambda a, c: b_shell(a, c, "sh"), "termux": lambda a, c: b_shell(a, c, "termux"),
-    "logs": b_logs, "new": b_new, "cancel": b_cancel,
+    "logs": b_logs, "new": b_new, "cancel": b_cancel, "memory": b_memory,
 }
 
 
@@ -480,6 +508,13 @@ class ClaudeWorker:
                 p.terminate()
             log(f"Claude process stopped{': ' + reason if reason else ''}")
 
+    def forget(self):
+        """Drop the conversation: the next request starts a new one."""
+        self.stop("memory off")
+        st = load_json(STATE_PATH, {})
+        st.pop("claude_session_id", None)
+        save_json(STATE_PATH, st)
+
     def cancel(self):
         if not self.working:
             return False
@@ -500,6 +535,13 @@ class ClaudeWorker:
             bot, chat_id, prompt, cfg = self.q.get()
             self.working, self.cancelled = True, False
             try:
+                if not memory_on() and load_json(STATE_PATH, {}).get("claude_session_id"):
+                    self.forget()                        # memory off: every message is a new conversation
+                if not load_json(STATE_PATH, {}).get("claude_session_id"):
+                    bot.send(chat_id, "💬 <b>New Claude conversation</b>" + (
+                        "\nFollow-up messages continue it until you end it." if memory_on() else
+                        "\nMemory is off: each message is answered on its own."),
+                        conversation_buttons())
                 self.ask(bot, chat_id, prompt, cfg)
             except Exception as e:
                 log(f"claude error: {e!r}")
@@ -507,6 +549,14 @@ class ClaudeWorker:
             finally:
                 self.working = False
                 self.last_used = time.time()
+            if not memory_on() and not self.cancelled:
+                # Memory off: drop this conversation now and start a fresh process in the
+                # background, so the next message is still answered quickly.
+                self.forget()
+                try:
+                    self._start(cfg)
+                except Exception as e:
+                    log(f"Claude prestart failed: {e!r}")
 
     # -- one request
     def ask(self, bot, chat_id, prompt, cfg, retry=True, note=""):
@@ -694,13 +744,13 @@ class Bot:
             raise RuntimeError(f"{method}: {res.get('description')}")
 
     def set_commands(self, cmds, shortcuts=(), hidden=()):
-        """Telegram's command menu: built-ins, then each user command with its shortcuts.
+        """Telegram's command menu: /help, then each user command with its shortcuts.
 
         Set for the default scope AND for all private chats: Telegram prefers the more specific
         scope, so a list left there by another program (e.g. Claude Code's Telegram channel
         plugin sets /start /help /status) would otherwise hide ours.
         """
-        menu = [{"command": n, "description": d[:250]} for n, d in BUILTINS.items()]
+        menu = [{"command": n, "description": BUILTINS[n][:250]} for n in MENU_BUILTINS]
         for n, d in cmds.items():
             if n not in hidden:
                 menu.append({"command": n, "description": d[:250]})

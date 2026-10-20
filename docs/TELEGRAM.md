@@ -38,6 +38,9 @@ From then on the bot starts whenever Termux starts (see [USAGE.md](USAGE.md)) an
 
 ## Built-in commands
 
+Only `/help` is in Telegram's command menu (with your own commands, e.g. `/pc` and `/plugs`); the
+other built-ins work when typed, and the Claude ones also as buttons (see below).
+
 | Command | What it does |
 |---|---|
 | `/help` | All commands, including yours |
@@ -46,8 +49,9 @@ From then on the bot starts whenever Termux starts (see [USAGE.md](USAGE.md)) an
 | `/termux <cmd>` | Run a command in Termux, e.g. `/termux pkg upgrade -y` |
 | `/commands` | List your custom commands |
 | `/logs` | Recent bot and start log lines |
-| `/new` | Start a new Claude conversation (Claude forgets earlier messages; the warm process restarts) |
+| `/new` | End the Claude conversation (stops a running request; the next message starts a new one) |
 | `/cancel` | Stop the Claude request that is running (the next message resumes the conversation) |
+| `/memory on` · `/memory off` | Whether follow-up messages continue the conversation (default **on**) |
 
 Shell commands time out after 120 s; long output is cut to its last ~3,500 characters (pipe
 through `tail` for long output).
@@ -56,7 +60,16 @@ through `tail` for long output).
 
 Plain messages go to Claude Code, running headless in Debian's `~/workspace` with your Claude
 subscription. Telegram shows "typing…" while Claude works; one request runs at a time (others
-are queued). The conversation continues across messages until you send `/new`.
+are queued). The conversation continues across messages until you end it.
+
+When a conversation starts, the bot posts **💬 New Claude conversation** with three buttons:
+
+- **⏹ Cancel request**: stops the request that is running (`/cancel`)
+- **🆕 End conversation**: Claude forgets it; the next message starts a new one (`/new`)
+- **🧠 Memory: on/off**: with memory **off**, every message is answered on its own (a new
+  conversation each time; the bot keeps a fresh Claude process ready so it stays fast)
+
+The buttons run commands, so they keep working however many messages later you tap them.
 
 **Warm Claude.** The bot keeps one Claude process running between messages (Claude Code's
 streaming mode). The first message after a while takes ~15 s (Claude Code starting inside
