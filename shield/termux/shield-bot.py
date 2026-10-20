@@ -175,6 +175,7 @@ def user_commands():
 
 
 _MENU_CACHE = {}   # command name -> (mtime key, [shortcuts]) for "# menu: dynamic" commands
+_HIDDEN_SHORTCUTS = []   # shortcuts kept out of the menu, as of the last menu_shortcuts()
 
 
 def _header(path, lines=25):
@@ -194,26 +195,28 @@ def menu_shortcuts():
                                                       (e.g. reached through buttons)
       # menu: dynamic                                 run `<command> --menu` for the list
       # menu-depends: <path>                          re-run --menu when that file changes
-    `--menu` prints one shortcut per line: shortcut<TAB>args<TAB>description.
+    `--menu` prints one shortcut per line: shortcut<TAB>args<TAB>description[<TAB>hidden]
+    ("hidden" = like "# shortcut:", kept out of the menu).
     """
     base = ROOTFS + COMMANDS_DIR
     taken = set(BUILTINS) | set(user_commands())
-    out = []
+    out, hidden = [], set()
     for name in user_commands():
         path = os.path.join(base, name)
         head = _header(path)
         entries, dynamic, depends = [], False, []
         for line in head:
-            m = re.match(r"^\s*(?:#|//|--)\s*(?:menu|shortcut):\s*(.+)$", line, re.I)
+            m = re.match(r"^\s*(?:#|//|--)\s*(menu|shortcut):\s*(.+)$", line, re.I)
             if m:
-                spec = m.group(1).strip()
+                spec = m.group(2).strip()
                 if spec.lower() == "dynamic":
                     dynamic = True
                 else:
                     left, _, desc = spec.partition("|")
                     parts = left.split()
                     if parts:
-                        entries.append((parts[0], " ".join(parts[1:]), desc.strip()))
+                        entries.append((parts[0], " ".join(parts[1:]), desc.strip(),
+                                        m.group(1).lower() == "shortcut"))
             m = re.match(r"^\s*(?:#|//|--)\s*menu-depends:\s*(\S+)", line, re.I)
             if m:
                 depends.append(m.group(1))
@@ -231,14 +234,18 @@ def menu_shortcuts():
                 for row in text.splitlines() if code == 0 else []:
                     cols = row.split("\t")
                     if len(cols) >= 2:
-                        found.append((cols[0].strip(), cols[1].strip(), cols[2].strip() if len(cols) > 2 else ""))
+                        found.append((cols[0].strip(), cols[1].strip(), cols[2].strip() if len(cols) > 2 else "",
+                                      len(cols) > 3 and cols[3].strip().lower() == "hidden"))
                 _MENU_CACHE[name] = cached = (key, found)
             entries += cached[1]
-        for short, args, desc in entries:
+        for short, args, desc, hide in entries:
             short = short.lower()
             if NAME_RE.match(short) and short not in taken:
                 taken.add(short)
                 out.append((short, name, args, desc or f"/{name} {args}"))
+                if hide:
+                    hidden.add(short)
+    _HIDDEN_SHORTCUTS[:] = sorted(hidden)
     return out
 
 
@@ -259,14 +266,10 @@ def shortcuts_only():
 
 
 def hidden_shortcuts():
-    """Shortcuts declared with "# shortcut:" (usable, not listed in Telegram's menu)."""
-    found = set()
-    for name in user_commands():
-        for line in _header(os.path.join(ROOTFS + COMMANDS_DIR, name)):
-            m = re.match(r"^\s*(?:#|//|--)\s*shortcut:\s*(\S+)", line, re.I)
-            if m:
-                found.add(m.group(1).lower())
-    return found
+    """Shortcuts declared with "# shortcut:" or generated as "hidden" (usable, not listed in
+    Telegram's menu)."""
+    menu_shortcuts()
+    return set(_HIDDEN_SHORTCUTS)
 
 
 def menu_hidden():

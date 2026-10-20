@@ -10,7 +10,7 @@ gets you into the Shield over SSH with one click.
 
 ```
                                    ┌─ /status, /sh, /termux, /new …   built-ins: instant, no Claude
- Phone ── Telegram ──► shield-bot ─┼─ /plugs, /plug_pc_on, /ar4k … your scripts in ~/workspace/commands
+ Phone ── Telegram ──► shield-bot ─┼─ /plugs, /pc, /ar4k … your scripts in ~/workspace/commands
            (one bot)   (Termux)    └─ anything else ─► claude -p in ~/workspace (your subscription)
                                                        └─ can create new commands on request
 

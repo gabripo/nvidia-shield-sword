@@ -5,9 +5,11 @@
 # shortcuts-only: yes
 """Bot command for Shelly smart plugs (Gen2/Gen3/Gen4 local RPC API, no cloud).
 
-Used only through its menu commands, generated per plug from plugs.conf (no spaces):
+/plugs shows all plugs with buttons (BUTTON: lines, turned into Telegram buttons by shield-bot):
+"On" for a plug that's off, "Off" and "Power cycle" (both ask for confirmation) for one that's on.
+The buttons run shortcuts generated per plug from plugs.conf, which also work when typed but are
+not listed in Telegram's menu:
 
-  /plugs                status of all plugs
   /plug_pc              status of plug "pc"
   /plug_pc_on           switch on
   /plug_pc_off          switch off
@@ -27,6 +29,7 @@ even if the network is slow. Default 60 s: a PC set to "power on after AC loss" 
 power off long enough for its supply to drain (30 s was not enough on an ASRock B850M).
 """
 import json
+import re
 import sys
 import time
 import urllib.error
@@ -86,28 +89,50 @@ def describe(plug, s):
     return " · ".join(parts)
 
 
-def status(plug):
+def status(plug, states=None):
     try:
-        return describe(plug, rpc(plug, "Switch.GetStatus", id=0))
+        s = rpc(plug, "Switch.GetStatus", id=0)
     except RuntimeError as e:
         return f"{plug['num']} {plug['name']}: offline ({e})"
+    if states is not None:
+        states[plug["name"]] = bool(s.get("output"))
+    return describe(plug, s)
+
+
+def short_name(plug, action):
+    slug = re.sub(r"[^a-z0-9_]", "_", plug["name"])
+    return (f"plug_{slug}" if action == "status" else f"plug_{slug}_{action}")[:32]
+
+
+def buttons(plugs, states):
+    """BUTTON: lines for shield-bot: "/command | label [| confirm]"."""
+    rows = []
+    for p in plugs:
+        on = states.get(p["name"])
+        if on is None:                           # offline: no actions
+            continue
+        if on:
+            rows += [f"/{short_name(p, 'off')} | {p['name']}: Off | confirm",
+                     f"/{short_name(p, 'cycle')} | {p['name']}: Power cycle | confirm"]
+        else:
+            rows.append(f"/{short_name(p, 'on')} | {p['name']}: On")
+    rows.append("/plugs | Refresh")
+    print("\n".join("BUTTON: " + r for r in rows))
 
 
 def print_menu(plugs):
-    """Shortcuts for Telegram's command menu (shortcut<TAB>args<TAB>description), read by
-    shield-bot because of the "# menu: dynamic" header line."""
-    import re
-    print("plugs\tstatus\tAll plugs: status and power")
+    """Shortcuts (shortcut<TAB>args<TAB>description[<TAB>hidden]), read by shield-bot because
+    of the "# menu: dynamic" header line. Only /plugs is listed in the menu; the per-plug
+    shortcuts are reached through its buttons."""
+    print("plugs\tstatus\tSmart plugs: status and controls")
     for p in plugs:
-        slug = re.sub(r"[^a-z0-9_]", "_", p["name"])
         label = p["name"]
         for action, desc in (("status", f"{label}: status and power"),
                              ("on", f"{label}: switch on"),
                              ("off", f"{label}: switch off"),
                              ("toggle", f"{label}: toggle on/off"),
                              ("cycle", f"{label}: power cycle (off {p['cycle']} s, then on)")):
-            short = f"plug_{slug}" if action == "status" else f"plug_{slug}_{action}"
-            print(f"{short[:32]}\t{p['name']} {action}\t{desc}")
+            print(f"{short_name(p, action)}\t{p['name']} {action}\t{desc}\thidden")
 
 
 def main():
@@ -119,14 +144,16 @@ def main():
     selector = args.pop(0) if args and args[0] not in ACTIONS else None
     action = args[0] if args else "status"
     if action not in ACTIONS or len(args) > 1:
-        sys.exit("Unknown action - use the menu entries (/plugs, /plug_<name>_on, ...)")
+        sys.exit("Unknown action - send /plugs and use its buttons")
 
     if action == "list":
         print("\n".join(f"{p['num']} {p['name']} - {p['host']} (cycle {p['cycle']} s)" for p in plugs))
         return
     if selector is None:
         if action == "status":
-            print("\n".join(status(p) for p in plugs))
+            states = {}
+            print("\n".join(status(p, states) for p in plugs))
+            buttons(plugs, states)
             return
         if len(plugs) > 1:
             sys.exit("Which plug? Use " + ", ".join(f"/plug_{p['name']}_{action}" for p in plugs))
@@ -169,6 +196,8 @@ def main():
                   + (" - something is drawing power (booting?)" if watts >= 5 else " - nothing drawing power yet"))
     except RuntimeError as e:
         sys.exit(str(e))
+    if action != "cycle-start":                  # cycle-start is used by other commands (pcctl)
+        print("BUTTON: /plugs | All plugs")
 
 
 if __name__ == "__main__":

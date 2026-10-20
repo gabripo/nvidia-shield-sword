@@ -6,7 +6,7 @@ only), runs in Termux, reads every message from you and decides what to do with 
 | You send | What happens | Claude usage |
 |---|---|---|
 | a **built-in command** (`/status`, `/sh …`) | answered directly by shield-bot | none |
-| one of **your commands** (`/plugs`, `/plug_pc_on`, …) | runs the matching script in Debian's `~/workspace/commands/` | none |
+| one of **your commands** (`/plugs`, `/pc`, …) | runs the matching script in Debian's `~/workspace/commands/` | none |
 | **anything else** (plain text, unknown `/commands`) | handed to Claude Code (`claude -p` in `~/workspace`), reply sent back | yes |
 
 Claude can **extend the bot**: ask *"create a command /ar4k that connects via SSH to the gaming
@@ -160,7 +160,9 @@ menu as well as in `/help` and `/commands`. Declare them in the command's first 
 ```
 
 With `menu: dynamic` the command prints one `shortcut<TAB>args<TAB>description` line per
-shortcut when called with `--menu` (see `examples/commands/plug`, which generates five per plug).
+shortcut when called with `--menu`, plus `<TAB>hidden` to keep one out of the menu (see
+`examples/commands/plug`, which generates five hidden ones per plug, reached through `/plugs`'s
+buttons).
 Telegram shows at most 100 menu entries. A `menu-hide` command still works when typed; a
 `shortcuts-only` command doesn't (the bot answers with its menu entries), so every action is a
 single word without spaces, like `examples/commands/plug`.
@@ -183,7 +185,7 @@ If the menu shows other commands (e.g. only `/start /help /status`), another pro
 list for a more specific scope; shield-bot sets its menu for the default scope **and** for all
 private chats, so restarting the bot fixes it. Close and reopen the chat to refresh the menu.
 
-Ready-made commands for Shelly smart plugs (`/plugs`, `/plug_<name>_on`, `/plug_<name>_cycle`, …) are in
+Ready-made commands for Shelly smart plugs (`/plugs` with on/off/power-cycle buttons per plug) are in
 [`examples/commands/plug`](../examples/commands/plug)
 (see [examples/README.md](../examples/README.md)). For a gaming PC (Bazzite) there's
 [`examples/commands/pcctl`](../examples/commands/pcctl): `/pc` shows the status with buttons

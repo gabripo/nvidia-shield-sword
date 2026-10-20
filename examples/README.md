@@ -29,17 +29,21 @@ Send `/new` first if the current conversation should forget earlier context.
 Controls one or more Shelly plugs on your Wi-Fi directly over their local API (Gen2/Gen3/Gen4,
 tested with a Shelly Plug S Gen3; no Shelly cloud):
 
-| Command | What it does |
-|---|---|
-| `/plugs` | Status of all plugs, e.g. `1 pc: ON · 48.2 W · 38 °C · 1.24 kWh` |
-| `/plug_pc` | Status of plug `pc` |
-| `/plug_pc_on` · `/plug_pc_off` · `/plug_pc_toggle` | Switch plug `pc` |
-| `/plug_pc_cycle` | **Power cycle**: off for the plug's cycle time (default 60 s), then on again |
+Send **`/plugs`**: the reply lists every plug (e.g. `1 pc: ON · 48.2 W · 38 °C · 1.24 kWh`)
+with **buttons** for each one:
 
-These are generated **per plug** from `plugs.conf` (`pc` is the plug's name; a plug named `lamp`
-gets `/plug_lamp_on`, …) and all appear in Telegram's command menu (the **/** button); a new
-plug's entries appear within a minute. There are no commands with spaces: the underlying
-`commands/plug` is *shortcuts-only*.
+| Button | Shown when | What it does |
+|---|---|---|
+| `pc: On` | the plug is off | Switches it on |
+| `pc: Off` | the plug is on | Switches it off (asks *are you sure?*) |
+| `pc: Power cycle` | the plug is on | Off for the plug's cycle time (default 60 s), then on again (asks *are you sure?*) |
+| `Refresh` | always | Status again |
+
+The buttons run shortcuts generated **per plug** from `plugs.conf` (`pc` is the plug's name; a
+plug named `lamp` gets `/plug_lamp_on`, …): `/plug_pc`, `/plug_pc_on`, `/plug_pc_off`,
+`/plug_pc_toggle`, `/plug_pc_cycle`. They also work when typed but stay out of Telegram's menu,
+where only `/plugs` is listed. A new plug's buttons appear right away. There are no commands with
+spaces: the underlying `commands/plug` is *shortcuts-only*.
 
 ### Turning a PC on with `cycle`
 
@@ -128,7 +132,7 @@ Tested another PC? A pull request adding a row to this table is welcome.
    2         lamp   192.168.1.51
    ```
 
-4. Send `/plugs` to the bot. New plugs: add a line, no restart needed; their menu entries
+4. Send `/plugs` to the bot. New plugs: add a line, no restart needed; their buttons
    appear within a minute.
 
 Or ask the bot: *"add my Shelly plug at 192.168.1.52 as plug 3 named heater"*; Claude edits

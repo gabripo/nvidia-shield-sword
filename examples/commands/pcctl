@@ -87,7 +87,8 @@ def remote(conf, action, timeout=40):
 def plug(conf, action):
     r = subprocess.run(["./commands/plug", conf["plug"], action], capture_output=True, text=True,
                        timeout=110, cwd="/root/workspace")
-    return (r.stdout + r.stderr).strip()
+    # Drop plug's own buttons: /pc offers its own.
+    return "\n".join(l for l in (r.stdout + r.stderr).splitlines() if not l.startswith("BUTTON:")).strip()
 
 
 def watts(conf):
