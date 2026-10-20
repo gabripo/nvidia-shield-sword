@@ -34,8 +34,8 @@ tested with a Shelly Plug S Gen3; no Shelly cloud):
 | `/plug` | Status of all plugs, e.g. `1 pc: ON · 48.2 W · 38 °C · 1.24 kWh` |
 | `/plug list` | Configured plugs with IP and cycle time |
 | `/plug pc on` · `/plug 1 off` · `/plug pc toggle` | Switch a plug, by **name or number** |
-| `/plug pc cycle` | **Power cycle**: off for N seconds, then on again |
-| `/plug pc cycle 30` | Same, with a 30 s off time this once |
+| `/plug pc cycle` | **Power cycle**: off for N seconds (default 60), then on again |
+| `/plug pc cycle 90` | Same, with a 90 s off time this once |
 
 With a single plug configured, the name can be left out (`/plug cycle`).
 
@@ -48,16 +48,31 @@ or the Shield is slow. A quick `off`/`on` or `toggle` from the phone is often to
 power supply to register a power loss. After the cycle, the reply shows the power draw: tens of
 watts means the PC is booting.
 
-BIOS setting (names vary by vendor): ASRock *Advanced → Chipset Configuration → Restore On
-AC/Power Loss = Power On*. If the PC doesn't start:
+**Tested setup** (ASRock B850M Pro RS, from ASRock's *AMD 800 Series Software/BIOS Setup Guide*,
+section 3.4.5 *Advanced → ACPI Configuration*):
 
-1. With the plug ON, press the PC's power button: `/plug pc` should then show tens of watts.
-   If not, the plug doesn't feed the PC (check the PSU's rear switch and the cable).
-2. Check the BIOS setting is **Power On** (not *Last State*) and saved.
-3. Disable deep power-saving modes (*Deep Sleep*, *ErP Ready*) that can block it on some boards.
-4. Try a longer off time: `/plug pc cycle 30`, then set it as the plug's default in `plugs.conf`.
-5. Alternative without cutting power: Wake-on-LAN (ask the bot: *"create a command /wake that
-   sends a Wake-on-LAN packet to my PC, MAC aa:bb:cc:dd:ee:ff"*).
+| BIOS setting | Value | Why |
+|---|---|---|
+| Restore on AC/Power Loss | **Power On** | boot when power returns |
+| Deep Sleep | **Disabled** | ASRock's recommendation; deep sleep can keep the board from noticing power returning |
+| USB Power delivery in Soft Off state (S5) | Disabled (optional) | no USB power while the PC is off (on our board some ports stayed powered anyway) |
+| USB Device Power on | Disabled (if the option above is Disabled) | needs USB power in S5 |
+
+With these settings the PC **did not** start after 10, 15 or 30 s off, and **did** start after
+**60 s** off, hence the 60 s default. Other PCs may need more or less: try
+`/plug pc cycle 90`, then set the working value in `plugs.conf`.
+
+If the PC doesn't start:
+
+1. With the plug ON, press the PC's power button: `/plug pc` should show tens of watts while it
+   boots. If not, the plug doesn't feed the PC (check the PSU's rear switch and the cable).
+   Note: a shut-down PC usually shows **0.0 W**; its standby draw is below what the plug measures.
+2. Check *Restore on AC/Power Loss* is **Power On** (not *Last State*) and saved (F10).
+3. Disable *Deep Sleep* / *ErP Ready*.
+4. Lengthen the off time (`/plug pc cycle 90`).
+5. Alternative without cutting power: Wake-on-LAN (BIOS *PCIE Devices Power On = Enabled*; ask
+   the bot: *"create a command /wake that sends a Wake-on-LAN packet to my PC, MAC
+   aa:bb:cc:dd:ee:ff"*).
 
 ### Install
 
@@ -72,12 +87,12 @@ AC/Power Loss = Power On*. If the PC doesn't start:
    ```
 
 3. Configure the plugs in `/root/workspace/.secrets/plugs.conf` (inside Debian, `chmod 600`),
-   one per line: number, name, IP, optional cycle seconds (default 10), optional password (only if
+   one per line: number, name, IP, optional cycle seconds (default 60), optional password (only if
    you enabled one in the Shelly app):
 
    ```
    # number  name   ip              [cycle_seconds]  [password]
-   1         pc     192.168.1.50    10
+   1         pc     192.168.1.50    60
    2         lamp   192.168.1.51
    ```
 

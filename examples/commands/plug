@@ -5,18 +5,19 @@
   /plug                      status of all plugs
   /plug list                 configured plugs
   /plug pc cycle             power-cycle plug "pc": off for N s, then on again
-  /plug pc cycle 30          same, with a 30 s off time this once
+  /plug pc cycle 90          same, with a 90 s off time this once
   /plug 1 on | off | toggle  switch plug number 1
   /plug on                   (works without a plug name when only one plug is configured)
 
 Plugs are configured in /root/workspace/.secrets/plugs.conf (chmod 600), one per line:
 
   # number  name   ip              [cycle_seconds]  [password]
-  1         pc     192.168.1.50    10
+  1         pc     192.168.1.50    60
   2         lamp   192.168.1.51
 
 "cycle" uses the plug's own timer (Switch.Set with toggle_after), so the off time is exact
-even if the network is slow: long enough for a PC set to "power on after AC loss" to boot.
+even if the network is slow. Default 60 s: a PC set to "power on after AC loss" needs the
+power off long enough for its supply to drain (30 s was not enough on an ASRock B850M).
 """
 import json
 import sys
@@ -26,7 +27,7 @@ import urllib.request
 
 CONF = "/root/workspace/.secrets/plugs.conf"
 ACTIONS = ("on", "off", "toggle", "cycle", "status", "list")
-DEFAULT_CYCLE = 10
+DEFAULT_CYCLE = 60          # long enough for a PC's power supply to register a real power loss
 
 
 def load_plugs():
@@ -92,7 +93,7 @@ def main():
     action = args[0] if args else "status"
     seconds = None
     if action == "cycle" and len(args) == 2 and args[1].isdigit():
-        seconds = int(args.pop())                       # one-off off time: /plug pc cycle 30
+        seconds = int(args.pop())                       # one-off off time: /plug pc cycle 90
     if action not in ACTIONS or len(args) > 1:
         sys.exit("Usage: /plug [name|number] [on|off|toggle|cycle [seconds]|status]   (/plug list shows the plugs)")
 
