@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+# description: LG TV: power and HDMI input
+# menu: tv status | LG TV: status and controls
+# shortcut: tv_on on | LG TV: turn on
+# shortcut: tv_off off | LG TV: turn off
+# shortcut: tv_hdmi_1 input HDMI_1 | LG TV: HDMI 1
+# shortcut: tv_hdmi_2 input HDMI_2 | LG TV: HDMI 2
+# shortcut: tv_hdmi_3 input HDMI_3 | LG TV: HDMI 3
+# shortcut: tv_hdmi_4 input HDMI_4 | LG TV: HDMI 4
+# shortcut: tv_pair pair | LG TV: pair the Shield (approve on the TV)
+# shortcuts-only: yes
+"""Bot command for an LG webOS TV, from the Shield.
+
+/tv shows power and the current input, with buttons: turn on/off and HDMI 1-4 (the gaming PC's
+input is marked). It talks to the TV over the network with webOS's API (port 3001), using
+lgtv.py from https://github.com/gabripo/BazziteLG as a library. When the TV is unreachable
+(deep sleep: no network) it is woken by HDMI-CEC from the Shield: putting the Shield to sleep
+and waking it sends CEC "One Touch Play" (TV on, input = Shield), through ADB to the Shield
+itself (Debian's adb -> 127.0.0.1:5555).
+
+`tvctl ensure <input>` is used after the PC boots (pcctl tvcheck): it reports when the TV is
+already on that input, otherwise wakes the TV and switches it.
+
+Configuration /root/workspace/.secrets/tv.conf (chmod 600), KEY=value lines:
+
+  ip=192.168.1.x          # the TV's fixed LAN address
+  mac=aa:bb:cc:dd:ee:ff   # for Wake-on-LAN
+  pc_input=HDMI_3         # the gaming PC's input (marked in the buttons)
+  shield_input=HDMI_4     # the Shield's input (where CEC wakes the TV)
+
+The pairing key is kept in /root/workspace/.secrets/tv.key (/tv_pair, approve on the TV).
+"""
+import asyncio
+import importlib.util
+import json
+import os
+import socket
+import ssl
+import subprocess
+import sys
+import time
+
+CONF = "/root/workspace/.secrets/tv.conf"
+KEY = "/root/workspace/.secrets/tv.key"
+LGTV = "/root/workspace/tools/lgtv/lgtv.py"
+ADB = ["adb", "-s", "127.0.0.1:5555"]
+
+spec = importlib.util.spec_from_file_location("lgtv", LGTV)
+if not spec or not os.path.exists(LGTV):
+    sys.exit(f"Missing {LGTV}: get it from https://github.com/gabripo/BazziteLG (scripts/lgtv.py).")
+lg = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(lg)
+
+
+class NotPaired(Exception):
+    pass
+
+
+def load_conf():
+    conf = {"pc_input": "HDMI_3", "shield_input": "HDMI_4"}
+    try:
+        for line in open(CONF):
+            line = line.split("#", 1)[0].strip()
+            if "=" in line:
+                k, v = line.split("=", 1)
+                conf[k.strip()] = v.strip()
+    except FileNotFoundError:
+        sys.exit(f"Not configured: create {CONF} (see the comment in this command).")
+    if not conf.get("ip"):
+        sys.exit(f"Set ip=<TV address> in {CONF}.")
+    return conf
+
+
+def app_of(input_id):                       # HDMI_3 -> com.webos.app.hdmi3
+    return "com.webos.app." + input_id.lower().replace("_", "")
+
+
+def label(conf, input_id, labels=None):
+    name = (labels or {}).get(input_id) or input_id.replace("_", " ")
+    if input_id == conf["pc_input"]:
+        name += " 🎮 Gaming PC"
+    elif input_id == conf["shield_input"]:
+        name += " (Shield)"
+    return name
+
+
+# ---------------------------------------------------------------- webOS over the network
+
+def reachable(conf, timeout=2):
+    try:
+        socket.create_connection((conf["ip"], 3001), timeout=timeout).close()
+        return True
+    except OSError:
+        return False
+
+
+class TV:
+    """One registered webOS session: async with TV(conf) as tv: await tv.req(uri, payload)."""
+
+    def __init__(self, conf, pairing=False):
+        self.conf, self.pairing, self.ws, self.n = conf, pairing, None, 0
+
+    async def __aenter__(self):
+        ctx = ssl.create_default_context()
+        ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
+        self.ws = await asyncio.wait_for(lg.ws_connect(self.conf["ip"], 3001, ctx), 5)
+        key = None if self.pairing else (open(KEY).read().strip() if os.path.exists(KEY) else None)
+        if not key and not self.pairing:
+            await self.ws.close()
+            raise NotPaired()
+        manifest = lg.MANIFEST
+
+        async def register(m):
+            await self.ws.send(json.dumps({"type": "register", "id": "register_0", "payload": {
+                "client-key": key, "forcePairing": False, "manifest": m, "pairingType": "PROMPT"}}))
+
+        await register(manifest)
+        while True:
+            msg = json.loads(await asyncio.wait_for(self.ws.recv(), 60 if self.pairing else 10))
+            if msg.get("type") == "response" and (msg.get("payload") or {}).get("pairingType") == "PROMPT":
+                if not self.pairing:
+                    raise NotPaired()
+                print("Approve the request on the TV (press OK on the remote)...", flush=True)
+                continue
+            if msg.get("type") == "registered":
+                if self.pairing:
+                    old = os.umask(0o077)
+                    with open(KEY, "w") as f:
+                        f.write(msg["payload"]["client-key"] + "\n")
+                    os.umask(old)
+                return self
+            if msg.get("type") == "error":
+                if manifest is lg.MANIFEST and "blacklisted certificate" in str(msg.get("error", "")):
+                    manifest = lg.UNSIGNED_MANIFEST
+                    await register(manifest)
+                    continue
+                raise RuntimeError(f"TV refused the connection: {msg.get('error')}")
+
+    async def __aexit__(self, *exc):
+        await self.ws.close()
+
+    async def req(self, uri, payload=None):
+        self.n += 1
+        msg = await lg._request(self.ws, self.n, uri, payload or {})
+        p = msg.get("payload") or {}
+        if msg.get("type") == "error" and p.get("errorCode") != "-102":    # -102: already so
+            raise RuntimeError(f"{uri}: {msg.get('error') or p}")
+        return p
+
+
+async def tv_info(conf):
+    async with TV(conf) as tv:
+        power = (await tv.req("com.webos.service.tvpower/power/getPowerState")).get("state", "?")
+        info = {"power": power, "app": "", "labels": {}}
+        if power == "Active":
+            info["app"] = (await tv.req("com.webos.applicationManager/getForegroundAppInfo")).get("appId", "")
+            try:
+                for d in (await tv.req("tv/getExternalInputList")).get("devices", []):
+                    if d.get("id", "").startswith("HDMI"):
+                        info["labels"][d["id"]] = d.get("label") or d["id"]
+            except RuntimeError:
+                pass
+        return info
+
+
+async def tv_cmd(conf, uri, payload=None):
+    async with TV(conf) as tv:
+        return await tv.req(uri, payload)
+
+
+def info_or_none(conf):
+    """TV state, or None when it isn't on the network."""
+    if not reachable(conf):
+        return None
+    try:
+        return asyncio.run(tv_info(conf))
+    except (OSError, ConnectionError, asyncio.TimeoutError, TimeoutError):
+        return None
+
+
+# ---------------------------------------------------------------- waking up
+
+def cec_wake():
+    """Shield sleep + wake = HDMI-CEC One Touch Play: the TV turns on (also from deep sleep)."""
+    def adb(*args, timeout=20):
+        r = subprocess.run(["adb", *args], capture_output=True, text=True, timeout=timeout)
+        return r.stdout + r.stderr
+    try:
+        out = adb("connect", "127.0.0.1:5555")
+        if "unauthorized" in out or "failed" in out:
+            raise RuntimeError("ADB to the Shield isn't allowed: approve the prompt on the TV "
+                               "(\"Always allow\") and try again")
+        out = adb("-s", "127.0.0.1:5555", "shell",
+                  "if dumpsys power | grep -q mWakefulness=Awake; then input keyevent KEYCODE_SLEEP; "
+                  "sleep 3; fi; input keyevent KEYCODE_WAKEUP; echo woke", timeout=30)
+        if "woke" not in out:
+            raise RuntimeError(f"ADB to the Shield failed: {out.strip()[:200]}")
+    finally:
+        subprocess.run(["adb", "kill-server"], capture_output=True, timeout=10)   # don't leave a daemon
+
+
+def wait_on(conf, seconds):
+    end = time.time() + seconds
+    while time.time() < end:
+        i = info_or_none(conf)
+        if i and i["power"] == "Active":
+            return i
+        time.sleep(3)
+    return None
+
+
+def wake(conf, use_wol=True):
+    """Turn the TV on; returns how ("already on", "Wake-on-LAN", "HDMI-CEC from the Shield")."""
+    i = info_or_none(conf)
+    if i and i["power"] == "Active":
+        return "already on"
+    if i and i["power"] == "Screen Off":
+        asyncio.run(tv_cmd(conf, "com.webos.service.tvpower/power/turnOnScreen"))
+        return "screen on"
+    if use_wol and conf.get("mac"):
+        lg._send_wol(conf["mac"], conf["ip"])
+        if wait_on(conf, 12):
+            return "Wake-on-LAN"
+    cec_wake()
+    if wait_on(conf, 45):
+        return "HDMI-CEC from the Shield"
+    raise RuntimeError("the TV didn't come on (no network after Wake-on-LAN and HDMI-CEC)")
+
+
+def switch(conf, input_id):
+    for attempt in range(3):                   # right after waking, webOS may still be starting
+        try:
+            asyncio.run(tv_cmd(conf, "tv/switchInput", {"inputId": input_id}))
+            return
+        except (RuntimeError, OSError, ConnectionError, asyncio.TimeoutError) as e:
+            if attempt == 2:
+                raise RuntimeError(f"couldn't switch to {input_id}: {e}")
+            time.sleep(4)
+
+
+# ---------------------------------------------------------------- bot output
+
+def buttons(conf, info):
+    if not os.path.exists(KEY):
+        rows = ["/tv_pair | Pair with the TV", "/tv | Refresh"]
+    elif not info or info["power"] != "Active":
+        n = conf["pc_input"].split("_")[-1]
+        rows = ["/tv_on | Turn on", f"/tv_hdmi_{n} | Turn on: 🎮 Gaming PC", "/tv | Refresh"]
+    else:
+        rows = []
+        for n in range(1, 5):
+            inp = f"HDMI_{n}"
+            mark = "✓ " if info["app"] == app_of(inp) else ""
+            rows.append(f"/tv_hdmi_{n} | {mark}{label(conf, inp, info['labels'])}")
+        rows += ["/tv_off | Turn off", "/tv | Refresh"]
+    print("\n".join("BUTTON: " + r for r in rows))
+
+
+def describe(conf, info):
+    if not info:
+        return "TV: off or in deep sleep (not on the network)"
+    if info["power"] != "Active":
+        return f"TV: off ({info['power']})"
+    current = next((i for i in info["labels"] if app_of(i) == info["app"]), None)
+    return "TV: on · " + (label(conf, current, info["labels"]) if current else f"app {info['app'] or '?'}")
+
+
+def main():
+    conf = load_conf()
+    args = sys.argv[1:] or ["status"]
+    action = args[0].lower()
+
+    if action == "pair":
+        if not reachable(conf):
+            sys.exit("The TV isn't on the network: turn it on first (/tv_on).")
+        async def pair():
+            async with TV(conf, pairing=True):
+                pass
+        asyncio.run(pair())
+        print("Paired: the Shield can now control the TV.")
+        buttons(conf, info_or_none(conf))
+        return
+
+    if action == "status":
+        info = info_or_none(conf)
+        print(describe(conf, info))
+        if not os.path.exists(KEY):
+            print("Not paired with the TV yet: turn the TV on, tap Pair and approve on the TV.")
+        buttons(conf, info)
+    elif action == "on":
+        how = wake(conf)
+        print(f"TV on ({how})." if how != "already on" else "The TV is already on.")
+        buttons(conf, wait_on(conf, 5))
+    elif action == "off":
+        if not info_or_none(conf):
+            print("The TV is already off.")
+        else:
+            asyncio.run(tv_cmd(conf, "system/turnOff", {"standbyMode": "active"}))
+            print("TV off.")
+        print("BUTTON: /tv | Refresh")
+    elif action in ("input", "ensure") and len(args) > 1:
+        target = lg.normalize_input(args[1])
+        info = info_or_none(conf)
+        if action == "ensure" and info and info["power"] == "Active" and info["app"] == app_of(target):
+            print(f"📺 The TV is on and showing {label(conf, target, info['labels'])}.")
+            return
+        how = wake(conf, use_wol=action != "ensure")      # after a PC boot, its script already tried WoL
+        switch(conf, target)
+        info = wait_on(conf, 5)
+        if action == "ensure":
+            print(f"📺 Turned the TV on ({how}) and switched to {label(conf, target)}.")
+        else:
+            print(("" if how == "already on" else f"TV on ({how}). ") + f"Input: {label(conf, target)}.")
+        buttons(conf, info)
+    else:
+        sys.exit("Unknown action - send /tv and use its buttons")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except NotPaired:
+        sys.exit("The TV doesn't know the Shield yet: send /tv and tap Pair (approve on the TV).")
+    except (RuntimeError, OSError, subprocess.TimeoutExpired) as e:
+        sys.exit(f"TV: {e}")

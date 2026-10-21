@@ -42,8 +42,21 @@ status() {
   echo "Load:      $(cut -d' ' -f1-3 /proc/loadavg) · RAM free $(free -h | awk '/^Mem/ {print $7}')"
 }
 
+tv() {   # read-only report on BazziteLG's lgtv (https://github.com/gabripo/BazziteLG), key=value
+  local d=/etc/lgtvcontrol
+  if [ ! -d "$d" ]; then echo "installed=no"; return; fi
+  echo "installed=yes"
+  echo "disabled=$([ -e "$d/disabled" ] && echo yes || echo no)"
+  echo "tv_ip=$(cat "$d/tv_ip" 2>/dev/null)"
+  echo "tv_mac=$(cat "$d/tv_mac" 2>/dev/null)"
+  echo "tv_input=$(cat "$d/tv_input" 2>/dev/null)"
+  echo "startup=$(systemctl show lgtv-startup.service -p ActiveState --value)/$(systemctl show lgtv-startup.service -p Result --value)"
+  echo "startup_log=$(journalctl -b -u lgtv-startup.service --no-pager -o cat 2>/dev/null | grep -v '^$' | tail -1 | cut -c1-200)"
+}
+
 case "${SSH_ORIGINAL_COMMAND:-status}" in
   status)           status ;;
+  tv)               tv ;;
   shutdown)         echo "Shutting down..."; setsid "$HELPERS/steamos-poweroff-now" >/dev/null 2>&1 < /dev/null & sleep 1 ;;
   reboot)           echo "Rebooting...";      setsid "$HELPERS/steamos-reboot-now"   >/dev/null 2>&1 < /dev/null & sleep 1 ;;
   sunshine-restart) systemctl --user restart "$SUNSHINE_UNIT" && sleep 3 &&

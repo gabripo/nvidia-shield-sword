@@ -7,6 +7,7 @@
 # shortcut: pc_sunshine_restart sunshine-restart | Gaming PC: restart Sunshine (streaming)
 # shortcut: pc_gamemode gamemode | Gaming PC: switch to Game Mode
 # shortcut: pc_desktop desktop | Gaming PC: switch to Desktop Mode
+# shortcut: pc_tvcheck tvcheck | Gaming PC: after power-on, make sure the TV shows it
 # shortcuts-only: yes
 """Bot command for a gaming PC (Bazzite) at home, driven over SSH from the Shield.
 
@@ -25,10 +26,16 @@ Configuration in /root/workspace/.secrets/pc.conf (chmod 600), KEY=value lines:
   key=/root/.ssh/pc_bazzite    # private key of the Shield (ssh-keygen -t ed25519)
   plug=pc                      # plug name in plugs.conf, used by /pc_on (commands/plug)
 
+TV fallback: ~150 s after /pc_on, /pc_tvcheck runs (bot "LATER:" line). If the PC's own
+script (BazziteLG's lgtv, https://github.com/gabripo/BazziteLG) is disabled (`lgtv disable`),
+the TV is left alone; if the TV already shows the PC, it just says so; otherwise the TV is
+woken by HDMI-CEC from the Shield and switched to the PC's input (commands/tvctl ensure).
+
 /pc_on only power-cycles the plug when the PC is off: not reachable over SSH *and* drawing
 less than ON_WATTS on the plug (a PC still shutting down closes SSH early). It replies at once;
 the plug's own timer switches power back on.
 """
+import os
 import re
 import socket
 import subprocess
@@ -36,7 +43,8 @@ import sys
 import time
 
 CONF = "/root/workspace/.secrets/pc.conf"
-ACTIONS = ("status", "on", "shutdown", "reboot", "sunshine-restart", "gamemode", "desktop")
+ACTIONS = ("status", "on", "shutdown", "reboot", "sunshine-restart", "gamemode", "desktop", "tvcheck")
+TVCHECK_AFTER = 150  # s after /pc_on: power returns at ~60 s, Bazzite boots in ~60-90 s
 ON_WATTS = 10        # above this the PC is running, starting or shutting down
 
 
@@ -129,6 +137,39 @@ def show_status(conf):
     buttons("on", m.group(1).strip() if m else "")
 
 
+def tvcheck(conf):
+    """After a power-on: does the TV show the PC? If the PC's lgtv script failed, use the
+    Shield (HDMI-CEC + webOS) instead. Keeps within the bot's 120 s per command."""
+    if not wait(conf, True, 30):
+        print("📺 The PC isn't up yet, so I didn't check the TV. Use /pc and /tv in a minute.")
+        buttons("after")
+        return
+    info = dict(l.split("=", 1) for l in remote(conf, "tv").splitlines() if "=" in l)
+    if info.get("disabled") == "yes":
+        print("📺 TV auto-on is disabled on the PC (lgtv disable): leaving the TV as it is.")
+        return
+    end = time.time() + 25                      # let the PC's lgtv-startup finish its attempts
+    while info.get("startup", "").startswith("activating") and time.time() < end:
+        time.sleep(4)
+        info = dict(l.split("=", 1) for l in remote(conf, "tv").splitlines() if "=" in l)
+    target = info.get("tv_input") or "HDMI_3"
+    tv_conf = "/root/workspace/.secrets/tv.conf"
+    if not os.path.exists(tv_conf) and info.get("tv_ip"):      # first time: take the PC's settings
+        old = os.umask(0o077)
+        with open(tv_conf, "w") as f:
+            f.write(f"ip={info['tv_ip']}\nmac={info.get('tv_mac', '')}\npc_input={target}\nshield_input=HDMI_4\n")
+        os.umask(old)
+    r = subprocess.run(["./commands/tvctl", "ensure", target], capture_output=True, text=True,
+                       timeout=85, cwd="/root/workspace")
+    out = (r.stdout + r.stderr).strip()
+    if "Turned the TV on" in out and info.get("installed") == "yes":
+        log = info.get("startup_log") or ""
+        failed = "failed" in info.get("startup", "") or "Could not reach" in log or "Timed out" in log
+        out = out.replace("📺 ", "📺 The PC's lgtv script couldn't reach the TV" + (f" ({log})" if log else "")
+                          + ". " if failed else "📺 The TV wasn't showing the PC. ", 1)
+    print(out)
+
+
 def main():
     conf = load_conf()
     action = (sys.argv[1] if len(sys.argv) > 1 else "status").lower()
@@ -148,7 +189,14 @@ def main():
             return
         print(plug(conf, "cycle-start"))
         print("The PC boots right after power returns: check with /pc in about 2 minutes.")
+        if os.path.exists("/root/workspace/commands/tvctl"):
+            print("I'll check that the TV shows it in about 2½ minutes.")
+            print(f"LATER: {TVCHECK_AFTER} /pc_tvcheck")
         buttons("after")
+        return
+
+    if action == "tvcheck":
+        tvcheck(conf)
         return
 
     if not up(conf):

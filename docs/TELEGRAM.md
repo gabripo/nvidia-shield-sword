@@ -196,6 +196,13 @@ The bot removes these lines from the message. A tap runs that command and sends 
 are you sure?"* with **Yes** / **Cancel**. Buttons usually point to `# shortcut:` entries, so the
 menu stays short: `/pc` alone is in the menu, and its buttons do the rest.
 
+### Follow-ups
+
+A command can ask for a **later** run: an output line `LATER: <seconds> /command` makes the bot run
+that command after the delay and send its reply (nothing if it prints nothing). `/pc_on` uses it
+to check the TV about 2½ minutes after the power-on. Follow-ups live in memory: a bot restart
+drops them.
+
 If the menu shows other commands (e.g. only `/start /help /status`), another program set a
 list for a more specific scope; shield-bot sets its menu for the default scope **and** for all
 private chats, so restarting the bot fixes it. Close and reopen the chat to refresh the menu.
@@ -204,7 +211,9 @@ Ready-made commands for Shelly smart plugs (`/plugs` with on/off/power-cycle but
 [`examples/commands/plug`](../examples/commands/plug)
 (see [examples/README.md](../examples/README.md)). For a gaming PC (Bazzite) there's
 [`examples/commands/pcctl`](../examples/commands/pcctl): `/pc` shows the status with buttons
-(turn on, shut down, reboot, restart Sunshine, Game/Desktop Mode), over a restricted SSH key.
+(turn on, shut down, reboot, restart Sunshine, Game/Desktop Mode), over a restricted SSH key, and
+[`examples/commands/tvctl`](../examples/commands/tvctl): `/tv` for an LG TV (power, HDMI inputs,
+HDMI-CEC wake from the Shield).
 
 Examples you can ask Claude for: *"create /lamp_on and /lamp_off for my Shelly plug at
 192.168.1.51"*, *"create /ar4k that runs a command on my gaming PC over SSH"* (Claude creates a key

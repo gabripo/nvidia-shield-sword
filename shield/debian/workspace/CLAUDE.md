@@ -79,7 +79,9 @@ Rules for a command file:
     buttons: print one line per button, `BUTTON: /<command or shortcut> | <label>`, adding
     `| confirm` for anything disruptive (shutdown, reboot, deleting); the bot asks "are you
     sure?" first. Make the buttons fit the current state (e.g. "Turn on" only when it's off),
-    point them to `# shortcut:` entries, and see `commands/pcctl` for an example.
+    point them to `# shortcut:` entries, and see `commands/pcctl` for an example. A line
+    `LATER: <seconds> /<command>` makes the bot run that command later and send its reply (e.g.
+    a check once a device has booted; print nothing to send nothing).
 
 When the owner asks to delete a command, remove its file and its README line.
 

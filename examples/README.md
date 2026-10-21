@@ -158,6 +158,16 @@ whether someone is streaming, Tailscale, temperatures) with **buttons** for what
 The buttons run `/pc_on`, `/pc_shutdown`, `/pc_reboot`, `/pc_sunshine_restart`,
 `/pc_desktop`, `/pc_gamemode`, which also work when typed but stay out of Telegram's menu.
 
+**The TV comes on with the PC.** If the PC turns the TV on by itself with
+[BazziteLG](https://github.com/gabripo/BazziteLG)'s `lgtv` (Wake-on-LAN + webOS at boot), `/pc_on`
+checks about 2½ minutes later that it worked (with `/tv` below installed):
+
+- `lgtv disable` on the PC → the TV is left alone.
+- The TV shows the PC's input → *"📺 The TV is on and showing AR4K 🎮 Gaming PC"*.
+- Otherwise, typically a TV in deep sleep that has dropped off the network, so Wake-on-LAN can't
+  reach it → the Shield wakes the TV over **HDMI-CEC** and switches it to the PC's input.
+  In tests that took 13 s.
+
 The Shield's key can only run [`examples/pc/shield-remote`](pc/shield-remote) on the PC: it is a
 *forced command* in the PC's `authorized_keys`, so the key gets no shell and the script accepts
 one word per action. Shutdown and reboot use SteamOS's `steamos-poweroff-now` /
@@ -218,3 +228,42 @@ What worked for this PC (Bazzite deck image, RX 9070 XT, Wi-Fi 6):
   - Devices that can't run Tailscale (e.g. a Nintendo Switch with Moonlight-Switch; the Switch has
     no IPv6) need a public IPv4 from the provider, or a travel router running Tailscale.
 - **Never expose** port 47990 (Sunshine's admin page) or 22 (SSH) to the internet.
+
+## commands/tvctl: LG TV (webOS)
+
+Send **`/tv`**: power and the current input, with buttons for **HDMI 1-4** (labelled as on the
+TV; the gaming PC's input is marked 🎮, the current one ✓), **Turn off**, and when the TV is off,
+**Turn on** / **Turn on: 🎮 Gaming PC**.
+
+- Control over the network: webOS's API (port 3001), using `lgtv.py` from
+  [BazziteLG](https://github.com/gabripo/BazziteLG) as a library (the Shield has its own pairing
+  key, separate from the PC's).
+- Turning on: Wake-on-LAN first. If the TV stays off the network (deep sleep), **HDMI-CEC from the
+  Shield**: putting the Shield to sleep and waking it sends CEC *One Touch Play*, which turns the TV
+  on (on the Shield's input). Then the requested input is selected over the network.
+  - The Shield's Debian sends those key events to Android over ADB to itself (`127.0.0.1:5555`).
+    This needs the Shield's network debugging, which this setup already uses.
+
+### Install
+
+1. In Debian on the Shield: `apt-get install -y adb`, and put
+   [`scripts/lgtv.py`](https://github.com/gabripo/BazziteLG/blob/master/scripts/lgtv.py) at
+   `/root/workspace/tools/lgtv/lgtv.py`.
+2. Install `examples/commands/tvctl` as `/root/workspace/commands/tvctl` (`chmod 755`) and create
+   `/root/workspace/.secrets/tv.conf` (`chmod 600`). `/pc_tvcheck` writes it from the PC's
+   `lgtv` settings the first time.
+
+   ```
+   ip=192.168.1.200
+   mac=aa:bb:cc:dd:ee:ff
+   pc_input=HDMI_3
+   shield_input=HDMI_4
+   ```
+
+3. With the TV on and showing the Shield:
+   - run `adb connect 127.0.0.1:5555` in Debian and approve *Allow USB debugging?* on the TV
+     (tick *Always allow*);
+   - send `/tv` → **Pair with the TV**, and approve on the TV.
+
+The TV needs HDMI-CEC enabled (LG: *SIMPLINK (HDMI-CEC)*), which also lets the Shield turn it on
+and off with its own remote.

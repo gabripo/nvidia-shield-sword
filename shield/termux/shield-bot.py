@@ -281,10 +281,14 @@ def menu_hidden():
 
 
 class Reply(str):
-    """Reply HTML that may carry inline buttons: [(label, callback_data)]."""
+    """Reply HTML that may carry inline buttons [(label, callback_data)] and follow-up
+    commands [(seconds, command)]."""
     buttons = ()
+    later = ()
+    empty = False
 
 
+LATER_RE = re.compile(r"^LATER:\s*(\d{1,4})\s+(/[a-z0-9_]{1,32})\s*$", re.M | re.I)
 BUTTON_RE = re.compile(r"^BUTTON:\s*(/[a-z0-9_]{1,32})\s*\|\s*([^|\n]+?)\s*(\|\s*confirm\s*)?$", re.M | re.I)
 
 
@@ -299,10 +303,29 @@ def run_user_command(name, arg, cfg, label=None):
     # asks "are you sure?" before running (for shutdowns and the like).
     buttons = [(m.group(2), ("?" if m.group(3) else "") + m.group(1).lower())
                for m in BUTTON_RE.finditer(out)]
-    reply = Reply(pre(BUTTON_RE.sub("", out).strip(),
-                      (label or f"/{name}" + (f" {arg}" if arg else "")) + f" - exit {code}"))
-    reply.buttons = buttons
+    # "LATER: <seconds> /command" runs that command after a delay and sends its reply
+    # (nothing is sent if it prints nothing), e.g. a check once a PC has booted.
+    later = [(min(int(m.group(1)), 3600), m.group(2).lower()) for m in LATER_RE.finditer(out)]
+    text = LATER_RE.sub("", BUTTON_RE.sub("", out)).strip()
+    reply = Reply(pre(text, (label or f"/{name}" + (f" {arg}" if arg else "")) + f" - exit {code}"))
+    reply.buttons, reply.later, reply.empty = buttons, later, not text
     return reply
+
+
+def schedule_later(bot, chat_id, reply, cfg):
+    """Run a reply's LATER: commands after their delay (in memory: lost if the bot restarts)."""
+    for seconds, cmd in getattr(reply, "later", ()):
+        def run(cmd=cmd):
+            try:
+                r = handle_command(cmd, cfg)
+                if r is not None and not getattr(r, "empty", False):
+                    bot.send(chat_id, r, getattr(r, "buttons", ()))
+                    schedule_later(bot, chat_id, r, cfg)
+                log(f"later {cmd} done")
+            except Exception as e:
+                log(f"later {cmd} failed: {e!r}")
+        log(f"later {cmd} in {seconds}s")
+        threading.Timer(seconds, run).start()
 
 
 # ------------------------------------------------------------------ built-ins
@@ -843,6 +866,7 @@ def dispatch(bot, chat_id, text, cfg):
             reply = handle_command(text, cfg)
             if reply is not None:
                 bot.send(chat_id, reply, getattr(reply, "buttons", ()))
+                schedule_later(bot, chat_id, reply, cfg)
                 log("replied")
                 return
             # Unknown /command: let Claude handle it (e.g. "/ar4k" before it exists).
@@ -885,6 +909,8 @@ def on_button(bot, cq, cfg):
         reply = handle_command(text, cfg)
         bot.send(chat_id, reply if reply is not None else f"Unknown command {html.escape(text)}",
                  getattr(reply, "buttons", ()))
+        if reply is not None:
+            schedule_later(bot, chat_id, reply, cfg)
         log("replied")
     except Exception as e:
         log(f"button error: {e!r}")
