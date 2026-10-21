@@ -217,6 +217,31 @@ What worked for this PC (Bazzite deck image, RX 9070 XT, Wi-Fi 6):
     Sunshine (`/pc_sunshine_restart`).
   - Remove the `steam://close/bigpicture` *undo* command from the "Steam Big Picture" app (Sunshine →
     Applications). In Game Mode it drops Steam to its desktop window whenever Sunshine stops.
+  - **Black screen in Game Mode** (log: *Couldn't get drm fb for plane [0]*): Sunshine keeps
+    capturing a display plane that gamescope has stopped using. Fixed in Sunshine
+    [#5885](https://github.com/LizardByte/Sunshine/pull/5885) (2026-10-10), which is not in stable
+    2026.914. What worked: the `sunshine-beta` formula (2026.1018.5342).
+    - `brew unpin sunshine && brew uninstall sunshine`
+    - `brew install lizardbyte/homebrew/sunshine-beta && brew pin sunshine-beta`
+    - `brew upgrade qtbase` (it needs Qt 6.12)
+    - point `ExecStart` in `~/.config/systemd/user/app-dev.lizardbyte.app.Sunshine.service` to
+      `/home/linuxbrew/.linuxbrew/opt/sunshine-beta/bin/sunshine`
+    - give the new binary the capture permission:
+      `sudo setcap cap_sys_admin,cap_sys_nice+p <Cellar path of the sunshine binary>`
+
+    Keep it pinned: an automatic update installs a new binary without that permission. Return to
+    stable once a stable release includes the fix.
+- **Tuning** (measured on a Steam Deck at home, Wi-Fi 6):
+  - Turn **Wi-Fi power saving off** on the PC:
+    `sudo nmcli connection modify <wifi> 802-11-wireless.powersave 2` and
+    `sudo iw dev <wlan> set power_save off`. Router pings went from up to 20 ms (jitter 4.5 ms)
+    to at most 8 ms (jitter 1.5 ms).
+  - **Encoder: Vulkan**, Sunshine's own choice on the RX 9070 XT: 4.0 ms host processing
+    (3.7-4.7), 0% frames dropped, 3 ms network, 0.7 ms decoding.
+    - `encoder = vaapi` gave a black picture on this GPU.
+    - `adapter_name = /dev/dri/renderD128` broke capture (black screen); Sunshine already picks the
+      right GPU by itself.
+  - A network cable (the board has 2.5 GbE) remains the most stable option.
 - **Pairing**: pair each Moonlight client at home (PIN in Sunshine's web page).
 - **Over the internet: Tailscale.** Run `ujust enable-tailscale` then `sudo tailscale up` on the
   PC, install the Tailscale app on phone and laptop, and in Moonlight add the PC by its Tailscale
