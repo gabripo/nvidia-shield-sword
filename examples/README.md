@@ -238,7 +238,8 @@ What worked for this PC (Bazzite deck image, RX 9070 XT, Wi-Fi 6):
     to at most 8 ms (jitter 1.5 ms).
   - **Encoder: Vulkan**, Sunshine's own choice on the RX 9070 XT: 4.0 ms host processing
     (3.7-4.7), 0% frames dropped, 3 ms network, 0.7 ms decoding.
-    - `encoder = vaapi` gave a black picture on this GPU.
+    - `encoder = vaapi` gave a black picture on this GPU (RDNA 4, Mesa 26.2) with HEVC and with
+      H.264, with or without `vaapi_strict_rc_buffer`; sound and input still worked.
     - `adapter_name = /dev/dri/renderD128` broke capture (black screen); Sunshine already picks the
       right GPU by itself.
   - A network cable (the board has 2.5 GbE) remains the most stable option.
