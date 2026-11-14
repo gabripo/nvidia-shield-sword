@@ -141,6 +141,8 @@ Notes:
 Every **executable file** in `/root/workspace/commands/` (inside Debian) is a command; the file
 name is the command name. The bot rescans the folder on every message and updates Telegram's
 command menu, so new commands work immediately. Write them yourself or ask Claude.
+For something that runs on its own and alerts you (with its own buttons and memory), a separate bot
+fits better: see [MORE-BOTS.md](MORE-BOTS.md).
 
 ```bash
 #!/bin/bash

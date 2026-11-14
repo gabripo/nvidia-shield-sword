@@ -47,7 +47,8 @@ same `~/workspace` (same rules and custom commands) but is a separate conversati
 
 Nothing starts until Termux runs. Either open **Termux** with the TV remote, or just use
 `shield` / Shield.app from the Mac, which opens Termux through adb. Opening Termux runs
-`~/.termux/boot/start-shield.sh`: wake lock, `sshd` and the Telegram bot.
+`~/.termux/boot/start-shield.sh`: wake lock, `sshd` and the Telegram bot. Other bots start too
+once their launcher line is in `~/.bashrc` ([MORE-BOTS.md](MORE-BOTS.md#start-after-a-reboot)).
 
 ## Checking what runs
 
@@ -57,7 +58,8 @@ adb shell ps -A -o PID,ETIME,ARGS | grep -E "shield-bot|sshd"    # works without
 ```
 
 On the Shield, `~/.termux/boot/start-shield.log` records every start, `shield-bot.log` every
-message and `shield-bot.err` the bot's errors.
+message and `shield-bot.err` the bot's errors. Other bots: `sh ~/.termux/boot/start-<bot>.sh status`
+([MORE-BOTS.md](MORE-BOTS.md#checking-what-runs)).
 
 ## Files on the Shield
 

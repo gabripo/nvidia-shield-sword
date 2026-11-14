@@ -46,6 +46,14 @@ opens Google Flights, declines the cookie banner, waits for prices, takes screen
 extracts the results as text. Claude never books or pays; you continue from the link.
 Details: [docs/TELEGRAM.md](docs/TELEGRAM.md#browsing-with-screenshots).
 
+## More bots next to shield-bot
+
+Always-on bots that watch something and alert you (job postings, house ads…) run next to shield-bot,
+each with its own Telegram bot, Debian folder and launcher, deployed from the Mac the same way. Bots
+that read alert emails share one bot Gmail through
+**[shield-mailbox](https://github.com/gabripo/shield-mailbox)**. The pattern, the mailbox and what to
+know about reading websites: [docs/MORE-BOTS.md](docs/MORE-BOTS.md).
+
 ## Repository layout
 
 | Path | What it is |
@@ -69,6 +77,7 @@ Details: [docs/TELEGRAM.md](docs/TELEGRAM.md#browsing-with-screenshots).
 3. `setup/install.sh` (sets up everything on the Shield, about 15–30 minutes).
 4. Sign in to Claude and set up the bot: **[docs/TELEGRAM.md](docs/TELEGRAM.md)**.
 5. Day-to-day use: **[docs/USAGE.md](docs/USAGE.md)**. Problems: **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**.
+6. Optional, more always-on bots next to shield-bot: **[docs/MORE-BOTS.md](docs/MORE-BOTS.md)**.
 
 ## Status
 
