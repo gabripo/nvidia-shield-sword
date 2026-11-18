@@ -153,10 +153,15 @@ whether someone is streaming, Tailscale, temperatures) with **buttons** for what
 | Reboot | Asks *are you sure?*, reboots |
 | Restart Sunshine | Restarts game streaming |
 | Desktop Mode / Game Mode | Switches to the other mode (asks *are you sure?*) |
+| 🤖 AI: on/off | Starts or stops the PC's AI services (`ai-switch`'s Ollama and Idol) for now, boot settings untouched; off gives games the whole GPU. Shown when `ai-switch` is installed |
+| 📺 TV link: on/off | `lgtv enable` / `lgtv disable` ([BazziteLG](https://github.com/gabripo/BazziteLG)): whether the PC turns the TV on and off with itself. Shown when `lgtv` is installed |
 | Refresh | Status again |
 
 The buttons run `/pc_on`, `/pc_shutdown`, `/pc_reboot`, `/pc_sunshine_restart`,
-`/pc_desktop`, `/pc_gamemode`, which also work when typed but stay out of Telegram's menu.
+`/pc_desktop`, `/pc_gamemode`, `/pc_ai_on`/`_off`, `/pc_tvlink_on`/`_off`, which also work when
+typed but stay out of Telegram's menu. No password is needed on the PC: `ai-switch` installs a
+polkit rule that lets your user start and stop its services, and `/etc/lgtvcontrol` is writable
+by every user.
 
 **The TV comes on with the PC.** If the PC turns the TV on by itself with
 [BazziteLG](https://github.com/gabripo/BazziteLG)'s `lgtv` (Wake-on-LAN + webOS at boot), `/pc_on`

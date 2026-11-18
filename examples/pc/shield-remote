@@ -10,6 +10,8 @@ export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 SUNSHINE_UNIT=app-dev.lizardbyte.app.Sunshine.service
 SUNSHINE_LOG="$HOME/.config/sunshine/sunshine.log"
 HELPERS=/usr/bin/steamos-polkit-helpers     # poweroff/reboot allowed without a password
+AI_SERVICES="ollama idol"                   # ai-switch's services; its polkit rule allows start/stop
+LGTV_DIR=/etc/lgtvcontrol                   # BazziteLG's lgtv: "disabled" marker = TV link off
 
 temp() {   # temperature in °C of the first hwmon sensor named $1 (optionally on PCI device $2)
   local h
@@ -40,6 +42,27 @@ status() {
   echo "Tailscale: ${ts:-not running}"
   echo "CPU:       $(temp k10temp) · GPU $(temp amdgpu 0x7550)"
   echo "Load:      $(cut -d' ' -f1-3 /proc/loadavg) · RAM free $(free -h | awk '/^Mem/ {print $7}')"
+  [ -x /usr/local/bin/ai-switch ] && echo "AI:        $(ai_state)"
+  [ -d "$LGTV_DIR" ] && echo "TV link:   $([ -e "$LGTV_DIR/disabled" ] && echo off || echo on) (lgtv: TV on/off with the PC)"
+}
+
+ai_state() {   # on if any AI service runs, with each service's state
+  local s list="" on=off
+  for s in $AI_SERVICES; do
+    [ -f "/etc/containers/systemd/$s.container" ] || continue
+    systemctl is-active --quiet "$s" && on=on
+    list="$list $s $(systemctl is-active "$s" 2>/dev/null),"
+  done
+  echo "$on (${list# }" | sed 's/,$/)/'
+}
+
+ai() {   # $1 start|stop: like `ai-switch now`, without touching what starts at boot
+  local s
+  for s in $AI_SERVICES; do
+    [ -f "/etc/containers/systemd/$s.container" ] || continue
+    systemctl --no-ask-password "$1" "$s" || { echo "Couldn't $1 $s"; return 1; }
+  done
+  echo "AI: $(ai_state)"
 }
 
 tv() {   # read-only report on BazziteLG's lgtv (https://github.com/gabripo/BazziteLG), key=value
@@ -63,5 +86,9 @@ case "${SSH_ORIGINAL_COMMAND:-status}" in
                     echo "Sunshine: $(systemctl --user is-active "$SUNSHINE_UNIT")" ;;
   gamemode)         steamos-session-select gamescope >/dev/null 2>&1 < /dev/null & sleep 1; echo "Switching to Game Mode..." ;;
   desktop)          steamos-session-select plasma    >/dev/null 2>&1 < /dev/null & sleep 1; echo "Switching to Desktop Mode..." ;;
+  ai-on)            ai start ;;
+  ai-off)           ai stop ;;
+  tvlink-on)        lgtv enable 2>&1 | tail -1 ;;
+  tvlink-off)       lgtv disable 2>&1 | tail -1 ;;
   *)                echo "Not allowed: ${SSH_ORIGINAL_COMMAND}"; exit 2 ;;
 esac
